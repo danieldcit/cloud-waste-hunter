@@ -1,4 +1,6 @@
 import "./globals.css";
+import { ThemeProvider } from "@/lib/theme/ThemeProvider";
+import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
 
 export default function RootLayout({
   children,
@@ -7,7 +9,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body>
+        <ThemeProvider>
+          <LocaleProvider>{children}</LocaleProvider>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

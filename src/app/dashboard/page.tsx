@@ -1,9 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { requireCustomerId } from "@/lib/tenant";
+import { auth } from "@/auth";
 import { computeDashboardSummary } from "@/lib/dashboard-summary";
+import { DashboardClient } from "@/components/dashboard/DashboardClient";
 
 export default async function DashboardPage() {
   const customerId = await requireCustomerId();
+  const session = await auth();
 
   const findings = await prisma.wasteFinding.findMany({
     where: { subscription: { customerId } },
@@ -11,37 +14,44 @@ export default async function DashboardPage() {
     include: { subscription: true },
   });
 
+  const subscriptions = await prisma.subscription.findMany({
+    where: { customerId, status: "CONNECTED" },
+    orderBy: { createdAt: "asc" },
+    include: {
+      costSnapshots: {
+        orderBy: { capturedAt: "desc" },
+        take: 1,
+      },
+    },
+  });
+
   const summary = computeDashboardSummary(findings);
+  const activeResourceCount = await prisma.resource.count({
+    where: { subscription: { customerId } },
+  });
 
   return (
-    <main>
-      <h1>Cloud Waste Hunter</h1>
-      <section>
-        <p>Findings abertos: {summary.openFindingsCount}</p>
-        <p>Economia potencial mensal: ${summary.totalEstimatedMonthlySavings.toFixed(2)}</p>
-      </section>
-      <table>
-        <thead>
-          <tr>
-            <th>Regra</th>
-            <th>Recurso</th>
-            <th>Subscription</th>
-            <th>Custo estimado/mês</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {findings.map((finding) => (
-            <tr key={finding.id}>
-              <td>{finding.ruleType}</td>
-              <td>{finding.resourceId}</td>
-              <td>{finding.subscription.displayName}</td>
-              <td>${finding.estimatedMonthlyCost.toFixed(2)}</td>
-              <td>{finding.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </main>
+    <DashboardClient
+      userLabel={session?.user?.name ?? session?.user?.email ?? ""}
+      summary={summary}
+      activeResourceCount={activeResourceCount}
+      findings={findings.map((f) => ({
+        id: f.id,
+        ruleType: f.ruleType,
+        resourceId: f.resourceId,
+        subscriptionName: f.subscription.displayName,
+        estimatedMonthlyCost: f.estimatedMonthlyCost,
+        status: f.status,
+      }))}
+      subscriptions={subscriptions.map((s) => ({
+        id: s.id,
+        displayName: s.displayName,
+        monthToDateSpend: s.costSnapshots[0]?.monthToDateSpend ?? null,
+        projectedSpend: s.costSnapshots[0]?.projectedSpend ?? null,
+        dailyTrend: (s.costSnapshots[0]?.dailyTrend as
+          | { date: string; cost: number }[]
+          | undefined) ?? [],
+      }))}
+    />
   );
 }
