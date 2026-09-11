@@ -18,7 +18,7 @@ describe("findOldSnapshots", () => {
     ]);
   });
 
-  it("ignores snapshots 30 days old or newer, and rows missing timeCreated", () => {
+  it("ignores snapshots 30 days old or newer, rows missing timeCreated, and resources of different types", () => {
     const recentSnapshot: ResourceGraphRow = {
       id: "snap-recent",
       type: "microsoft.compute/snapshots",
@@ -31,7 +31,13 @@ describe("findOldSnapshots", () => {
       subscriptionId: "sub-1",
       properties: {},
     };
+    const disk: ResourceGraphRow = {
+      id: "disk-1",
+      type: "microsoft.compute/disks",
+      subscriptionId: "sub-1",
+      properties: {},
+    };
 
-    expect(findOldSnapshots([recentSnapshot, malformedSnapshot], NOW)).toEqual([]);
+    expect(findOldSnapshots([recentSnapshot, malformedSnapshot, disk], NOW)).toEqual([]);
   });
 });
