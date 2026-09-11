@@ -35,8 +35,8 @@ describe("listFindingsForCurrentCustomer", () => {
   beforeEach(resetDb);
 
   it("only returns findings belonging to the logged-in customer's subscriptions", async () => {
-    const customerA = await seedCustomerWithFinding("tenant-a", "disk-a");
-    await seedCustomerWithFinding("tenant-b", "disk-b");
+    const customerA = await seedCustomerWithFinding("findings-tenant-a", "disk-a");
+    await seedCustomerWithFinding("findings-tenant-b", "disk-b");
 
     vi.mocked(auth).mockResolvedValue({
       customerId: customerA.id,
