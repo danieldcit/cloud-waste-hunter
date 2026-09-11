@@ -15,24 +15,25 @@
     "prisma:generate": "prisma generate"
   },
   "dependencies": {
-    "next": "^15.0.3",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "next-auth": "5.0.0-beta.25",
+    "@azure/identity": "^4.4.1",
     "@prisma/client": "^5.22.0",
-    "@azure/identity": "^4.4.1"
+    "next": "^15.0.3",
+    "next-auth": "5.0.0-beta.25",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.6.3",
     "@types/node": "^22.9.0",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
+    "dotenv": "^16.4.5",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^9.14.0",
     "eslint-config-next": "^15.0.3",
     "prisma": "^5.22.0",
-    "vitest": "^2.1.4",
-    "vite-tsconfig-paths": "^5.1.0",
     "tsx": "^4.19.2",
-    "dotenv": "^16.4.5"
+    "typescript": "^5.6.3",
+    "vite-tsconfig-paths": "^5.1.0",
+    "vitest": "^2.1.4"
   }
 }

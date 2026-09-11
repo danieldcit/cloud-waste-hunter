@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id            String         @id @default(cuid())
+  entraTenantId String         @unique
+  name          String
+  createdAt     DateTime       @default(now())
+  users         User[]
+  subscriptions Subscription[]
+}
+
+model User {
+  id            String   @id @default(cuid())
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id])
+  entraObjectId String   @unique
+  email         String
+  role          String   @default("member")
+  createdAt     DateTime @default(now())
+}
+
+enum SubscriptionStatus {
+  PENDING
+  CONNECTED
+  ERROR
+}
+
+model Subscription {
+  id                  String             @id @default(cuid())
+  customerId          String
+  customer            Customer           @relation(fields: [customerId], references: [id])
+  azureSubscriptionId String             @unique
+  displayName         String
+  status              SubscriptionStatus @default(PENDING)
+  connectedAt         DateTime?
+  createdAt           DateTime           @default(now())
+  scanRuns            ScanRun[]
+  resources           Resource[]
+  wasteFindings       WasteFinding[]
+}
+
+enum ScanStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model ScanRun {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  startedAt      DateTime     @default(now())
+  finishedAt     DateTime?
+  status         ScanStatus   @default(RUNNING)
+  resources      Resource[]
+}
+
+model Resource {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  scanRunId      String
+  scanRun        ScanRun      @relation(fields: [scanRunId], references: [id])
+  resourceId     String
+  type           String
+  rawProperties  Json
+  createdAt      DateTime     @default(now())
+}
+
+enum WasteRuleType {
+  ORPHANED_DISK
+  UNASSOCIATED_PUBLIC_IP
+  OLD_SNAPSHOT
+  IDLE_VPN_GATEWAY
+}
+
+enum FindingStatus {
+  OPEN
+  DISMISSED
+}
+
+model WasteFinding {
+  id                   String        @id @default(cuid())
+  subscriptionId       String
+  subscription         Subscription  @relation(fields: [subscriptionId], references: [id])
+  ruleType             WasteRuleType
+  resourceId           String
+  estimatedMonthlyCost Float
+  detectedAt           DateTime      @default(now())
+  status               FindingStatus @default(OPEN)
+
+  @@unique([subscriptionId, resourceId, ruleType])
+}
