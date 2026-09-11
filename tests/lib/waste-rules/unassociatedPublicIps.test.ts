@@ -16,14 +16,20 @@ describe("findUnassociatedPublicIps", () => {
     ]);
   });
 
-  it("ignores associated public IPs", () => {
-    const ip: ResourceGraphRow = {
+  it("ignores associated public IPs and other resource types", () => {
+    const associatedIp: ResourceGraphRow = {
       id: "ip-in-use",
       type: "microsoft.network/publicipaddresses",
       subscriptionId: "sub-1",
       properties: { ipConfiguration: { id: "nic-1" } },
     };
+    const unrelated: ResourceGraphRow = {
+      id: "disk-1",
+      type: "microsoft.compute/disks",
+      subscriptionId: "sub-1",
+      properties: {},
+    };
 
-    expect(findUnassociatedPublicIps([ip])).toEqual([]);
+    expect(findUnassociatedPublicIps([associatedIp, unrelated])).toEqual([]);
   });
 });
