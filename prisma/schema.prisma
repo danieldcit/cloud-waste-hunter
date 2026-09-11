@@ -44,6 +44,7 @@ model Subscription {
   scanRuns            ScanRun[]
   resources           Resource[]
   wasteFindings       WasteFinding[]
+  costSnapshots       CostSnapshot[]
 }
 
 enum ScanStatus {
@@ -79,6 +80,7 @@ enum WasteRuleType {
   UNASSOCIATED_PUBLIC_IP
   OLD_SNAPSHOT
   IDLE_VPN_GATEWAY
+  IDLE_VM
 }
 
 enum FindingStatus {
@@ -97,4 +99,14 @@ model WasteFinding {
   status               FindingStatus @default(OPEN)
 
   @@unique([subscriptionId, resourceId, ruleType])
+}
+
+model CostSnapshot {
+  id               String       @id @default(cuid())
+  subscriptionId   String
+  subscription     Subscription @relation(fields: [subscriptionId], references: [id])
+  capturedAt       DateTime     @default(now())
+  monthToDateSpend Float
+  projectedSpend   Float
+  dailyTrend       Json
 }
