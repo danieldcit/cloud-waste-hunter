@@ -34,4 +34,57 @@ describe("findIdleVpnGateways", () => {
 
     expect(findIdleVpnGateways([gateway, connection])).toEqual([]);
   });
+
+  it("returns a virtualnetworkgateways with no referencing connection", () => {
+    const gateway: ResourceGraphRow = {
+      id: "/subscriptions/sub-1/.../virtualNetworkGateways/gw-idle-2",
+      type: "microsoft.network/virtualnetworkgateways",
+      subscriptionId: "sub-1",
+      properties: {},
+    };
+
+    expect(findIdleVpnGateways([gateway])).toEqual([
+      { ruleType: "IDLE_VPN_GATEWAY", resourceId: gateway.id, subscriptionId: "sub-1" },
+    ]);
+  });
+
+  it("ignores non-connection resources with virtualNetworkGateway1 properties", () => {
+    const gateway: ResourceGraphRow = {
+      id: "/subscriptions/sub-1/.../vpnGateways/gw-idle-3",
+      type: "microsoft.network/vpngateways",
+      subscriptionId: "sub-1",
+      properties: {},
+    };
+    const disk: ResourceGraphRow = {
+      id: "disk-1",
+      type: "microsoft.compute/disks",
+      subscriptionId: "sub-1",
+      properties: {
+        virtualNetworkGateway1: { id: gateway.id },
+      },
+    };
+
+    expect(findIdleVpnGateways([gateway, disk])).toEqual([
+      { ruleType: "IDLE_VPN_GATEWAY", resourceId: gateway.id, subscriptionId: "sub-1" },
+    ]);
+  });
+
+  it("ignores a gateway referenced by virtualNetworkGateway2", () => {
+    const gateway: ResourceGraphRow = {
+      id: "/subscriptions/sub-1/.../vpnGateways/gw-active-2",
+      type: "microsoft.network/vpngateways",
+      subscriptionId: "sub-1",
+      properties: {},
+    };
+    const connection: ResourceGraphRow = {
+      id: "conn-2",
+      type: "microsoft.network/connections",
+      subscriptionId: "sub-1",
+      properties: {
+        virtualNetworkGateway2: { id: gateway.id },
+      },
+    };
+
+    expect(findIdleVpnGateways([gateway, connection])).toEqual([]);
+  });
 });
