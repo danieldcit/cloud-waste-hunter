@@ -54,22 +54,32 @@ make assumptions that only make sense once they exist:
 - **Multicloud** (AWS/GCP resource or cost integration). The app remains
   Azure-only.
 - **Tag-based cost allocation and grouped reporting.**
-- **Forecasting and anomaly detection** (real budget tracking, spike
-  detection, a persisted notifications system). The redesign's stat cards
-  for spend/forecast and its notifications panel are static visual
-  placeholders only — see "Placeholders" below.
+- **Anomaly detection and a persisted notifications/alerting system**
+  (spike detection, budget-threshold alerts, a notifications data model).
+  The redesign's notifications panel remains a static visual placeholder
+  only. (Note: real month-to-date spend and forecast — originally listed
+  here as placeholders — are now in scope; see the amendment below.)
 - **Password change / non-Entra account management.** Auth stays Entra ID
   SSO; the account menu only adds Sign out.
 
 ## Amendment to Fase 1's Global Constraints
 
-Fase 1's spec said "No Azure Monitor integration... in this phase." This
-sub-project deliberately amends that: Azure Monitor Metrics (read-only,
-covered by the existing Lighthouse Reader role — no new permission scope)
-is now in scope, solely to power the idle-VM rule below. No other Fase 1
-constraint changes: still Reader-only, still no remediation, the four
-existing rules are unchanged, tenant scoping (`requireCustomerId()`)
-still applies to every business-data query without exception.
+Fase 1's spec said "No Azure Monitor integration... in this phase" and
+"cost is estimated via a single Cost Management Query API call per
+finding [only]." This sub-project deliberately amends both:
+
+- Azure Monitor Metrics (read-only, covered by the existing Lighthouse
+  Reader role — no new permission scope) is now in scope, solely to
+  power the idle-VM rule (Part 1).
+- Subscription-level Cost Management calls (month-to-date total spend,
+  forecast, daily trend — still read-only, still Reader-scoped, still no
+  export pipeline) are now in scope, to power real stat cards and a real
+  trend chart (Part 2a) and the onboarding flow's first-scan feedback.
+
+No other Fase 1 constraint changes: still Reader-only, still no
+remediation, the four existing rules are unchanged, tenant scoping
+(`requireCustomerId()`) still applies to every business-data query
+without exception.
 
 ## Part 1 — New waste rule: idle virtual machines
 
@@ -132,22 +142,33 @@ so the interactive state lives client-side without turning the whole page
 into one.
 
 **Layout (matching the reference screenshot):**
-- Top bar: logo + product name, a search input, nav tabs (**Dashboard**
-  and **Recommendations** active and pointing at real content;
-  **Reports** and **Automation** rendered visually identical but disabled
-  — greyed out, not clickable, or leading to a static "coming soon" state
-  — per the user's explicit choice, not hidden), an account menu (user's
-  name/email from the session, a Sign out action, plus the theme and
-  language switches — see Parts 3/4).
+- Top bar: logo + product name, a search input, nav tabs (**Dashboard**,
+  **Recommendations**, and **Ambientes** active and pointing at real
+  content — Ambientes is new, see Part 2a; **Reports** and **Automation**
+  rendered visually identical but disabled — greyed out, not clickable,
+  or leading to a static "coming soon" state — per the user's explicit
+  choice, not hidden), an account menu (user's name/email from the
+  session, a Sign out action, plus the theme and language switches — see
+  Parts 3/4).
+- A **subscription selector** (dropdown), visible when the customer has
+  more than one `CONNECTED` subscription, scoping the stat cards and
+  trend chart below to one subscription at a time. Defaults to the
+  customer's first connected subscription. Hidden (or shown disabled with
+  a single implicit selection) when there is exactly one.
 - Stat cards row: **Potential Savings** and **Active Resources** are real,
   computed from the current customer's findings/resources exactly as
-  `computeDashboardSummary` and a resource count already do today.
-  **Monthly Spending** and **Projected Bill** are static visual
-  placeholders (fixed numbers, clearly out of scope per the Non-Goals
-  section — they require a whole-subscription cost query and a forecast
-  model that don't exist yet).
-- **Cost Trend vs Budget** chart: a static placeholder chart (fixed/fake
-  series), not wired to any real time-series data.
+  `computeDashboardSummary` and a resource count already do today (these
+  two remain cross-subscription totals, not affected by the selector).
+  **Monthly Spending** and **Projected Bill** are now real too — sourced
+  from the selected subscription's latest `CostSnapshot` (Part 2a). A
+  subscription with no snapshot yet (brand new, first scan hasn't
+  captured one) shows `$0.00` / an explicit "sem dados ainda" state rather
+  than a fake number — this is the "tudo bem estar zerado" behavior the
+  user asked for.
+- **Cost Trend** chart: real daily spend for the selected subscription
+  over the last 30 days, read from the same `CostSnapshot.dailyTrend`. A
+  subscription with no snapshot yet renders an empty/zeroed chart, not a
+  fake series.
 - **Recommendations table**: real `WasteFinding` rows. Columns: category
   (derived, see mapping below), rule/recommendation, resource, an
   **Impact** badge (High/Medium/Low, computed client-side from
@@ -185,6 +206,95 @@ verified manually via screenshot, consistent with how Task 13 left
 `dashboard`/`connect`'s JSX itself untested — this project has not yet
 introduced a component-testing setup (no React Testing Library / jsdom
 component harness), and adding one is out of scope for this spec.
+
+## Part 2a — Real subscription cost data + "Ambientes" (add-environment) flow
+
+Task 12 already built three working API routes — `POST /api/subscriptions`,
+`GET /api/subscriptions/connect-link`, `POST /api/subscriptions/:id/verify`
+— but Task 13 never built a UI form on top of them; `/connect` only
+renders a read-only list plus instructional text. The user wants the real
+onboarding capability ("quando eu decidir monitorar um ambiente novo,
+consiga adicionar de forma simples e iniciar o monitoramento") actually
+wired up, and wants the dashboard's spend/forecast/trend to be real
+queries rather than fixed placeholder numbers.
+
+### New data: `CostSnapshot`
+
+A new Prisma model, captured once per scan run (same 6-hour cadence as
+everything else the scanner does), so the dashboard only ever reads from
+Postgres — no live Azure calls on page view, consistent with the existing
+architecture:
+
+```prisma
+model CostSnapshot {
+  id               String       @id @default(cuid())
+  subscriptionId   String
+  subscription     Subscription @relation(fields: [subscriptionId], references: [id])
+  capturedAt       DateTime     @default(now())
+  monthToDateSpend Float
+  projectedSpend   Float
+  dailyTrend       Json // [{ date: string, cost: number }, ...] for the last 30 days
+}
+```
+
+**New azure lib functions** (new file, e.g.
+`src/lib/azure/subscriptionCost.ts`), each a single, read-only Cost
+Management call at subscription scope (no `ResourceId` filter), Reader-
+role-covered:
+
+- `getSubscriptionMonthToDateSpend(azureSubscriptionId): Promise<number>`
+  — Cost Management Query, `ActualCost`, `MonthToDate`, no resource
+  filter.
+- `getSubscriptionForecast(azureSubscriptionId): Promise<number>` — the
+  Cost Management **Forecast** API
+  (`POST /subscriptions/{id}/providers/Microsoft.CostManagement/forecast?api-version=2023-11-01`),
+  a real Azure endpoint purpose-built for this, not custom math.
+- `getSubscriptionDailyCostTrend(azureSubscriptionId, days = 30): Promise<{ date: string; cost: number }[]>`
+  — Cost Management Query, `ActualCost`, `Custom` timeframe spanning the
+  last `days` days, `granularity: "Daily"`.
+
+**Scanner integration:** after `runScan`'s existing findings/upsert work
+for a subscription, call the three functions above and persist one
+`CostSnapshot` row. This is wrapped in its own try/catch, same isolation
+principle as the final review's cost-estimation fix (Fix 4) — a failure
+capturing the cost snapshot must not fail the scan or the findings it
+already produced. A subscription's first scan may still fail to capture a
+snapshot (e.g. Cost Management has no data yet for a brand-new
+subscription) — that's fine; the dashboard's zero-state handles it.
+
+**Dashboard reads:** the selected subscription's most recent
+`CostSnapshot` (`orderBy: capturedAt desc, take: 1`, scoped through
+`subscription: { customerId }` like every other query), or nothing if
+none exists yet.
+
+### "Ambientes" tab
+
+A new route (e.g. `src/app/ambientes/page.tsx`, replacing `/connect`'s
+role — `/connect` can redirect here or be removed, implementation's
+call) reachable from the new nav tab, real functionality throughout:
+
+- Lists the customer's subscriptions with their `status`
+  (`PENDING` / `CONNECTED` / `ERROR`) and, for `CONNECTED` ones, their
+  latest `CostSnapshot.capturedAt` as a "last scanned" indicator.
+- **"+ Adicionar ambiente" form:** two fields, Azure Subscription ID and
+  a display name, submitting to the existing `POST /api/subscriptions`.
+  On success, the new row appears as `PENDING`.
+- For a `PENDING` row: shows the Lighthouse deploy link/instructions
+  (from the existing `GET /api/subscriptions/connect-link`) and a
+  **"Verificar conexão"** button calling the existing
+  `POST /api/subscriptions/:id/verify`. On success (200), the row flips to
+  `CONNECTED` — and, per the existing route's own logic (unchanged), the
+  first scan is already fired automatically in the background. No new
+  "start monitoring" action is needed beyond what Task 12 already built;
+  this sub-project's job is exposing it through a real form instead of
+  leaving it API-only.
+- On failure (409 — delegation not found yet), shows an inline retry
+  message rather than a generic error.
+
+**Testing:** the form's input validation (e.g., a basic Azure subscription
+GUID shape check before submitting) as a pure, unit-tested function. The
+page's fetch-and-render interaction: manual/screenshot verification, same
+precedent as the rest of this spec's UI.
 
 ## Part 3 — Styling: Tailwind CSS
 
@@ -236,16 +346,23 @@ Scanner (runScan):
     -> 4 existing sync rules + findIdleVirtualMachines (async, calls Monitor)
     -> candidates[] (now can include IDLE_VM)
     -> per-candidate cost estimate (existing, error-isolated) + upsert (existing, dismissal-safe)
+    -> [own try/catch] subscription cost snapshot (MTD spend, forecast, daily trend) -> CostSnapshot row
 
 Dashboard page (Server Component):
-  requireCustomerId() -> WasteFinding rows (unchanged query) + resource count
+  requireCustomerId() -> WasteFinding rows + resource count (unchanged)
+                      -> customer's CONNECTED subscriptions + selected one's latest CostSnapshot (new)
     -> passed as props to DashboardClient
 
 DashboardClient (Client Component):
-  local state: activeCategoryFilter, searchText, theme, locale (persisted)
+  local state: activeCategoryFilter, searchText, selectedSubscriptionId, theme, locale (persisted)
     -> derives visible rows from props + filter/search state
-    -> renders table, cards (real ones from props, placeholders hardcoded), nav, account menu
+    -> renders table, cards (real: savings/resources/spend/forecast; placeholder: notifications), chart (real, zero-state if no snapshot), nav, account menu
     -> "Take Action" click -> POST /api/findings/:id/dismiss (existing route, unchanged) -> optimistic row removal
+
+Ambientes page:
+  list subscriptions + latest scan indicator
+    -> "+ Adicionar ambiente" form -> POST /api/subscriptions (existing)
+    -> "Verificar conexão" -> POST /api/subscriptions/:id/verify (existing) -> CONNECTED -> runScan fires (existing)
 ```
 
 ## Manual Validation
@@ -255,5 +372,9 @@ mock-seeded session, confirm: the three category filters correctly
 partition real findings, search narrows the visible rows, theme toggle
 switches light/dark without a full reload, language toggle switches all
 redesigned labels across pt-BR/en/es, and the "Take Action" button
-dismisses a finding via the existing route. This is a manual pass (no new
-automated E2E harness), same spirit as Fase 1's Task 15.
+dismisses a finding via the existing route. On **Ambientes**, add a new
+subscription through the real form, verify the connection, and confirm
+the dashboard's subscription selector picks it up — showing a zeroed
+spend/forecast/chart state until its first scan captures a `CostSnapshot`.
+This is a manual pass (no new automated E2E harness), same spirit as
+Fase 1's Task 15.
