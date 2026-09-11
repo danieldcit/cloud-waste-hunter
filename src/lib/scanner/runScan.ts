@@ -42,7 +42,7 @@ async function captureCostSnapshot(
         subscriptionId: subscriptionRecordId,
         monthToDateSpend,
         projectedSpend,
-        dailyTrend,
+        dailyTrend: dailyTrend as object,
       },
     });
   } catch (error) {
