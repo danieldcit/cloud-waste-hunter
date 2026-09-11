@@ -1,5 +1,9 @@
 # Cloud Waste Hunter
 
+[![CI](https://github.com/danigomesdev/cloud-waste-hunter/actions/workflows/ci.yml/badge.svg)](https://github.com/danigomesdev/cloud-waste-hunter/actions/workflows/ci.yml)
+
+Repo: https://github.com/danigomesdev/cloud-waste-hunter
+
 Cloud Waste Hunter is a read-only dashboard that connects to a customer's Azure
 tenant via Azure Lighthouse, inventories resources through Azure Resource
 Graph, and flags likely waste (orphaned disks, unassociated public IPs, old
