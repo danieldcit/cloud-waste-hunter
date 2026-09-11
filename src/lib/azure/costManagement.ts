@@ -17,7 +17,7 @@ export async function estimateMonthlyCost(
     method: "POST",
     body: JSON.stringify({
       type: "ActualCost",
-      timeframe: "MonthToDate",
+      timeframe: "TheLastMonth",
       dataset: {
         granularity: "None",
         aggregation: { totalCost: { name: "Cost", function: "Sum" } },

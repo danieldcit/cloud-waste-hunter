@@ -12,6 +12,9 @@ import { runScan } from "@/lib/scanner/runScan";
 import { POST } from "@/app/api/subscriptions/[id]/verify/route";
 
 describe("POST /api/subscriptions/:id/verify", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
   beforeEach(resetDb);
 
   it("marks the subscription CONNECTED and triggers a scan when a delegation exists", async () => {
@@ -23,7 +26,12 @@ describe("POST /api/subscriptions/:id/verify", () => {
     });
 
     vi.mocked(requireCustomerId).mockResolvedValue(customer.id);
-    vi.mocked(armFetch).mockResolvedValue({ value: [{ id: "assignment-1" }] });
+    vi.mocked(armFetch).mockImplementation(async (url: string) => {
+      if (url.includes("registrationAssignments")) {
+        return { value: [{ id: "assignment-1" }] };
+      }
+      return { tenantId: "tenant-1" };
+    });
 
     const response = await POST(new Request("http://localhost"), {
       params: Promise.resolve({ id: subscription.id }),
@@ -51,6 +59,32 @@ describe("POST /api/subscriptions/:id/verify", () => {
     });
 
     expect(response.status).toBe(409);
+  });
+
+  it("returns 403 and does not connect when the subscription's tenant does not match the customer's tenant", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-3", name: "Mismatch" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-3", displayName: "Mismatch" },
+    });
+
+    vi.mocked(requireCustomerId).mockResolvedValue(customer.id);
+    vi.mocked(armFetch).mockImplementation(async (url: string) => {
+      if (url.includes("registrationAssignments")) {
+        return { value: [{ id: "assignment-1" }] };
+      }
+      return { tenantId: "attacker-tenant" };
+    });
+
+    const response = await POST(new Request("http://localhost"), {
+      params: Promise.resolve({ id: subscription.id }),
+    });
+
+    expect(response.status).toBe(403);
+    const updated = await prisma.subscription.findUniqueOrThrow({ where: { id: subscription.id } });
+    expect(updated.status).toBe("PENDING");
+    expect(runScan).not.toHaveBeenCalled();
   });
 
   it("returns 404 for a subscription belonging to another customer", async () => {

@@ -4,3 +4,7 @@ node_modules
 .env
 .env.test
 *.local
+next-env.d.ts
+*.tsbuildinfo
+/out
+infra/provider/main.json

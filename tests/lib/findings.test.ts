@@ -49,7 +49,7 @@ describe("listFindingsForCurrentCustomer", () => {
   });
 
   it("throws when there is no authenticated session", async () => {
-    vi.mocked(auth).mockResolvedValue(null);
+    vi.mocked(auth).mockResolvedValue(null as never);
 
     await expect(listFindingsForCurrentCustomer()).rejects.toThrow();
   });

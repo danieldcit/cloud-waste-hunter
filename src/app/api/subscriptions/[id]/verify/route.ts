@@ -8,6 +8,10 @@ interface RegistrationAssignmentListResponse {
   value: { id: string }[];
 }
 
+interface SubscriptionDetailsResponse {
+  tenantId: string;
+}
+
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -27,6 +31,22 @@ export async function POST(
 
   if (result.value.length === 0) {
     return NextResponse.json({ error: "Lighthouse delegation not found yet" }, { status: 409 });
+  }
+
+  const customer = await prisma.customer.findUniqueOrThrow({
+    where: { id: customerId },
+  });
+
+  const subscriptionDetailsUrl = `https://management.azure.com/subscriptions/${subscription.azureSubscriptionId}?api-version=2020-01-01`;
+  const subscriptionDetails = await armFetch<SubscriptionDetailsResponse>(
+    subscriptionDetailsUrl,
+  );
+
+  if (subscriptionDetails.tenantId !== customer.entraTenantId) {
+    return NextResponse.json(
+      { error: "Subscription tenant does not match your account" },
+      { status: 403 },
+    );
   }
 
   const updated = await prisma.subscription.update({

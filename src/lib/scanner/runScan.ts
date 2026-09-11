@@ -55,10 +55,18 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
     ];
 
     for (const candidate of candidates) {
-      const estimatedMonthlyCost = await estimateMonthlyCost(
-        subscription.azureSubscriptionId,
-        candidate.resourceId,
-      );
+      let estimatedMonthlyCost = 0;
+      try {
+        estimatedMonthlyCost = await estimateMonthlyCost(
+          subscription.azureSubscriptionId,
+          candidate.resourceId,
+        );
+      } catch (error) {
+        console.error(
+          `Cost estimation failed for resource ${candidate.resourceId} (rule ${candidate.ruleType}); using 0`,
+          error,
+        );
+      }
       await prisma.wasteFinding.upsert({
         where: {
           subscriptionId_resourceId_ruleType: {
@@ -73,7 +81,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           ruleType: candidate.ruleType,
           estimatedMonthlyCost,
         },
-        update: { estimatedMonthlyCost, status: "OPEN" },
+        update: { estimatedMonthlyCost },
       });
     }
 

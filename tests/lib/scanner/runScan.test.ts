@@ -97,7 +97,7 @@ describe("runScan", () => {
     expect(scanRun.status).toBe("FAILED");
   });
 
-  it("marks the scan FAILED when cost estimation throws", async () => {
+  it("does not fail the whole scan when cost estimation throws for one candidate, and persists that finding with cost 0", async () => {
     const customer = await prisma.customer.create({
       data: { entraTenantId: "tenant-3", name: "CostFails" },
     });
@@ -113,14 +113,24 @@ describe("runScan", () => {
         properties: { diskState: "Unattached" },
       },
     ]);
-    vi.mocked(estimateMonthlyCost).mockRejectedValue(new Error("cost service unavailable"));
+    vi.mocked(estimateMonthlyCost).mockRejectedValueOnce(new Error("cost service unavailable"));
 
-    await expect(runScan(subscription.id)).rejects.toThrow("cost service unavailable");
+    await runScan(subscription.id);
 
     const scanRun = await prisma.scanRun.findFirstOrThrow({
       where: { subscriptionId: subscription.id },
     });
-    expect(scanRun.status).toBe("FAILED");
+    expect(scanRun.status).toBe("SUCCEEDED");
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      ruleType: "ORPHANED_DISK",
+      resourceId: "disk-3",
+      estimatedMonthlyCost: 0,
+    });
   });
 
   it("updates an existing waste finding in place on a re-scan instead of duplicating it", async () => {
@@ -157,5 +167,44 @@ describe("runScan", () => {
       resourceId: "disk-4",
       estimatedMonthlyCost: 15.0,
     });
+  });
+
+  it("does not re-open a finding that was dismissed, on a later re-scan that re-detects the same resource", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-6", name: "Dismissed" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-6", displayName: "Dismissed" },
+    });
+
+    const sameResource = [
+      {
+        id: "disk-6",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-6",
+        properties: { diskState: "Unattached" },
+      },
+    ];
+
+    vi.mocked(queryResourceGraph).mockResolvedValue(sameResource);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(9.99);
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, resourceId: "disk-6" },
+    });
+    await prisma.wasteFinding.update({
+      where: { id: finding.id },
+      data: { status: "DISMISSED" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue(sameResource);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(9.99);
+    await runScan(subscription.id);
+
+    const updatedFinding = await prisma.wasteFinding.findUniqueOrThrow({
+      where: { id: finding.id },
+    });
+    expect(updatedFinding.status).toBe("DISMISSED");
   });
 });
