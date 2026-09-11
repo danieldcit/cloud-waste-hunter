@@ -35,7 +35,7 @@ describe("findOldSnapshots", () => {
       id: "disk-1",
       type: "microsoft.compute/disks",
       subscriptionId: "sub-1",
-      properties: {},
+      properties: { timeCreated: "2026-07-01T00:00:00Z" },
     };
 
     expect(findOldSnapshots([recentSnapshot, malformedSnapshot, disk], NOW)).toEqual([]);
