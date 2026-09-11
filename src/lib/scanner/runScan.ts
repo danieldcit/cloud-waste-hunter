@@ -1,10 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { queryResourceGraph } from "@/lib/azure/resourceGraph";
 import { estimateMonthlyCost } from "@/lib/azure/costManagement";
+import {
+  getSubscriptionMonthToDateSpend,
+  getSubscriptionForecast,
+  getSubscriptionDailyCostTrend,
+} from "@/lib/azure/subscriptionCost";
 import { findOrphanedDisks } from "@/lib/waste-rules/orphanedDisks";
 import { findUnassociatedPublicIps } from "@/lib/waste-rules/unassociatedPublicIps";
 import { findOldSnapshots } from "@/lib/waste-rules/oldSnapshots";
 import { findIdleVpnGateways } from "@/lib/waste-rules/idleVpnGateways";
+import { findIdleVirtualMachines } from "@/lib/waste-rules/idleVirtualMachines";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
 
 const COMBINED_QUERY = `
@@ -15,10 +21,37 @@ Resources
     'microsoft.compute/snapshots',
     'microsoft.network/vpngateways',
     'microsoft.network/virtualnetworkgateways',
-    'microsoft.network/connections'
+    'microsoft.network/connections',
+    'microsoft.compute/virtualmachines'
   )
 | project id, type, subscriptionId, properties
 `;
+
+async function captureCostSnapshot(
+  subscriptionRecordId: string,
+  azureSubscriptionId: string,
+): Promise<void> {
+  try {
+    const [monthToDateSpend, projectedSpend, dailyTrend] = await Promise.all([
+      getSubscriptionMonthToDateSpend(azureSubscriptionId),
+      getSubscriptionForecast(azureSubscriptionId),
+      getSubscriptionDailyCostTrend(azureSubscriptionId),
+    ]);
+    await prisma.costSnapshot.create({
+      data: {
+        subscriptionId: subscriptionRecordId,
+        monthToDateSpend,
+        projectedSpend,
+        dailyTrend,
+      },
+    });
+  } catch (error) {
+    console.error(
+      `Cost snapshot capture failed for subscription ${subscriptionRecordId}; skipping this run`,
+      error,
+    );
+  }
+}
 
 export async function runScan(subscriptionRecordId: string): Promise<void> {
   const subscription = await prisma.subscription.findUniqueOrThrow({
@@ -52,6 +85,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       ...findUnassociatedPublicIps(resources),
       ...findOldSnapshots(resources),
       ...findIdleVpnGateways(resources),
+      ...(await findIdleVirtualMachines(resources)),
     ];
 
     for (const candidate of candidates) {
@@ -84,6 +118,8 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         update: { estimatedMonthlyCost },
       });
     }
+
+    await captureCostSnapshot(subscription.id, subscription.azureSubscriptionId);
 
     await prisma.scanRun.update({
       where: { id: scanRun.id },
