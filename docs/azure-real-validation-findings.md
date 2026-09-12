@@ -65,13 +65,21 @@ personal tenant. Additional findings along the way:
   `az login` CLI session — valid because that session already has direct
   RBAC on the subscription, independent of Lighthouse.
 
-### 4. Root route (`/`) is a placeholder, not the dashboard
+### 4. Root route (`/`) is a placeholder, not the dashboard — fixed
 
-`src/app/page.tsx` renders only `<p>Cloud Waste Hunter</p>`. The real
+`src/app/page.tsx` rendered only `<p>Cloud Waste Hunter</p>`. The real
 dashboard is at `/dashboard`. NextAuth's default post-sign-in redirect
-target is `/`, so users land on the placeholder immediately after login
-with no visible next step — there's no redirect wired from `/` (or from
-sign-in) to `/dashboard`.
+target is `/`, so users landed on the placeholder immediately after
+login with no visible next step.
+
+Fixed by checking the session in `src/app/page.tsx` and redirecting to
+`/dashboard` when authenticated, rather than in an Auth.js `redirect`
+callback — that callback fires for both sign-in *and* sign-out with the
+same `{url: baseUrl}` shape, so an earlier attempt at this fix also
+sent freshly-signed-out users to `/dashboard`, which then threw
+(no session). Handling it in the page itself only affects authenticated
+visits, so sign-out still lands on the (unauthenticated) placeholder as
+before.
 
 ### 5. Browser "force dark mode" can override a correctly-implemented light theme
 
