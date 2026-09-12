@@ -47,6 +47,7 @@ export default async function DashboardPage() {
         resourceId: f.resourceId,
         subscriptionName: f.subscription.displayName,
         estimatedMonthlyCost: f.estimatedMonthlyCost,
+        estimatedMonthlySavings: f.estimatedMonthlySavings,
         status: f.status,
       }))}
       subscriptions={subscriptions.map((s) => ({

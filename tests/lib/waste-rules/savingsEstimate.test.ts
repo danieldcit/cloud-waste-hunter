@@ -30,7 +30,7 @@ describe("estimateMonthlySavings", () => {
     expect(savings).toBe(42);
   });
 
-  it("delegates to the Hybrid Benefit estimator for VM_MISSING_HYBRID_BENEFIT", async () => {
+  it("delegates to the Hybrid Benefit estimator with the resource and its cost for VM_MISSING_HYBRID_BENEFIT", async () => {
     const resource: ResourceGraphRow = {
       id: "vm-1",
       type: "microsoft.compute/virtualmachines",
@@ -47,39 +47,7 @@ describe("estimateMonthlySavings", () => {
     const savings = await estimateMonthlySavings(candidate, resource, 50);
 
     expect(savings).toBe(18);
-    expect(estimateHybridBenefitMonthlySavings).toHaveBeenCalledWith(resource);
-  });
-
-  it("delegates to the Linux BYOL estimator with the resource's publisher for VM_MISSING_LINUX_BYOL", async () => {
-    const resource: ResourceGraphRow = {
-      id: "vm-2",
-      type: "microsoft.compute/virtualmachines",
-      subscriptionId: "sub-1",
-      properties: { storageProfile: { imageReference: { publisher: "RedHat" } } },
-    };
-    const candidate: WasteFindingCandidate = {
-      ruleType: "VM_MISSING_LINUX_BYOL",
-      resourceId: "vm-2",
-      subscriptionId: "sub-1",
-    };
-    vi.mocked(estimateLinuxByolMonthlySavings).mockResolvedValue(12);
-
-    const savings = await estimateMonthlySavings(candidate, resource, 48);
-
-    expect(savings).toBe(12);
-    expect(estimateLinuxByolMonthlySavings).toHaveBeenCalledWith(resource, "RedHat");
-  });
-
-  it("returns null for a rule with no known way to estimate savings yet", async () => {
-    const candidate: WasteFindingCandidate = {
-      ruleType: "VM_OUTDATED_SKU_GENERATION",
-      resourceId: "vm-3",
-      subscriptionId: "sub-1",
-    };
-
-    const savings = await estimateMonthlySavings(candidate, undefined, 30);
-
-    expect(savings).toBeNull();
+    expect(estimateHybridBenefitMonthlySavings).toHaveBeenCalledWith(resource, 50);
   });
 
   it("returns null for VM_MISSING_HYBRID_BENEFIT when the resource can't be found", async () => {
@@ -93,5 +61,31 @@ describe("estimateMonthlySavings", () => {
 
     expect(savings).toBeNull();
     expect(estimateHybridBenefitMonthlySavings).not.toHaveBeenCalled();
+  });
+
+  it("delegates to the Linux BYOL estimator with the resource's cost for VM_MISSING_LINUX_BYOL", async () => {
+    const candidate: WasteFindingCandidate = {
+      ruleType: "VM_MISSING_LINUX_BYOL",
+      resourceId: "vm-2",
+      subscriptionId: "sub-1",
+    };
+    vi.mocked(estimateLinuxByolMonthlySavings).mockReturnValue(12);
+
+    const savings = await estimateMonthlySavings(candidate, undefined, 48);
+
+    expect(savings).toBe(12);
+    expect(estimateLinuxByolMonthlySavings).toHaveBeenCalledWith(48);
+  });
+
+  it("returns null for a rule with no known way to estimate savings yet", async () => {
+    const candidate: WasteFindingCandidate = {
+      ruleType: "VM_OUTDATED_SKU_GENERATION",
+      resourceId: "vm-3",
+      subscriptionId: "sub-1",
+    };
+
+    const savings = await estimateMonthlySavings(candidate, undefined, 30);
+
+    expect(savings).toBeNull();
   });
 });

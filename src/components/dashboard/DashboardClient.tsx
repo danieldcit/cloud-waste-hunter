@@ -16,6 +16,7 @@ interface FindingRow {
   resourceId: string;
   subscriptionName: string;
   estimatedMonthlyCost: number;
+  estimatedMonthlySavings: number | null;
   status: FindingStatus;
 }
 
@@ -243,11 +244,12 @@ export function DashboardClient({
                       {t(`impact.${impact}`)}
                     </span>
                   </td>
-                  {/* Current cost and estimated savings are the same figure here: every
-                      finding is a fully-idle/orphaned resource, so removing it recovers
-                      its entire cost. */}
                   <td className="p-2">${finding.estimatedMonthlyCost.toFixed(2)}</td>
-                  <td className="p-2">${finding.estimatedMonthlyCost.toFixed(2)}</td>
+                  <td className="p-2">
+                    {finding.estimatedMonthlySavings == null
+                      ? "—"
+                      : `$${finding.estimatedMonthlySavings.toFixed(2)}`}
+                  </td>
                   <td className="p-2">{finding.status}</td>
                   <td className="p-2">
                     <button

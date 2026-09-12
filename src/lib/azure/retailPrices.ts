@@ -25,6 +25,7 @@ async function queryRetailPrices(filter: string): Promise<RetailPriceItem[]> {
   const url = `${RETAIL_PRICES_URL}?$filter=${encodeURIComponent(filter)}`;
   const response = await fetch(url);
   if (!response.ok) {
+    console.error(`Retail Prices API request failed with ${response.status}: ${url}`);
     return [];
   }
   const data = (await response.json()) as RetailPricesResponse;
@@ -83,46 +84,35 @@ async function estimatePublicIpCost(resource: ResourceGraphRow): Promise<number>
   return monthlyPriceFromItems(items);
 }
 
+/**
+ * Fetches every Consumption-priced meter for this VM's exact size/region via
+ * `armSkuName` (the literal ARM size, e.g. "Standard_D2_v2" — unlike `skuName`,
+ * it needs no prefix-stripping and matches exactly one VM family), excluding
+ * Spot and Low Priority variants, which are separate, much cheaper meters that
+ * would otherwise be picked up by a naive "first match" and badly skew any
+ * price comparison.
+ */
+async function fetchVmPriceItems(resource: ResourceGraphRow): Promise<RetailPriceItem[]> {
+  const region = resource.location ?? "eastus";
+  const hardwareProfile = resource.properties.hardwareProfile as { vmSize?: string } | undefined;
+  const vmSize = hardwareProfile?.vmSize;
+  if (!vmSize) return [];
+
+  const items = await queryRetailPrices(
+    `serviceName eq 'Virtual Machines' and armRegionName eq '${escapeODataString(region)}' and armSkuName eq '${escapeODataString(vmSize)}'`,
+  );
+  return items.filter(
+    (item) =>
+      item.unitOfMeasure === "1 Hour" &&
+      !item.skuName.includes("Spot") &&
+      !item.skuName.includes("Low Priority"),
+  );
+}
+
 async function estimateVmCost(resource: ResourceGraphRow): Promise<number> {
-  const region = resource.location ?? "eastus";
-  const hardwareProfile = resource.properties.hardwareProfile as { vmSize?: string } | undefined;
-  const vmSize = hardwareProfile?.vmSize;
-  if (!vmSize) return 0;
-  const skuName = vmSize.replace(/^Standard_/, "");
-
-  const items = await queryRetailPrices(
-    `serviceName eq 'Virtual Machines' and armRegionName eq '${escapeODataString(region)}' and skuName eq '${escapeODataString(skuName)}' and contains(productName, 'Linux') and not contains(productName, 'Windows')`,
-  );
-  return monthlyPriceFromItems(items);
-}
-
-async function estimateWindowsVmCost(resource: ResourceGraphRow): Promise<number> {
-  const region = resource.location ?? "eastus";
-  const hardwareProfile = resource.properties.hardwareProfile as { vmSize?: string } | undefined;
-  const vmSize = hardwareProfile?.vmSize;
-  if (!vmSize) return 0;
-  const skuName = vmSize.replace(/^Standard_/, "");
-
-  const items = await queryRetailPrices(
-    `serviceName eq 'Virtual Machines' and armRegionName eq '${escapeODataString(region)}' and skuName eq '${escapeODataString(skuName)}' and contains(productName, 'Windows')`,
-  );
-  return monthlyPriceFromItems(items);
-}
-
-async function estimateLinuxDistroVmCost(
-  resource: ResourceGraphRow,
-  distroProductNameFragment: string,
-): Promise<number> {
-  const region = resource.location ?? "eastus";
-  const hardwareProfile = resource.properties.hardwareProfile as { vmSize?: string } | undefined;
-  const vmSize = hardwareProfile?.vmSize;
-  if (!vmSize) return 0;
-  const skuName = vmSize.replace(/^Standard_/, "");
-
-  const items = await queryRetailPrices(
-    `serviceName eq 'Virtual Machines' and armRegionName eq '${escapeODataString(region)}' and skuName eq '${escapeODataString(skuName)}' and contains(productName, '${escapeODataString(distroProductNameFragment)}')`,
-  );
-  return monthlyPriceFromItems(items);
+  const items = await fetchVmPriceItems(resource);
+  const basePrice = items.find((item) => !item.productName.includes("Windows"));
+  return basePrice ? monthlyPriceFromItems([basePrice]) : 0;
 }
 
 /** Used only when retail pricing data for the license delta itself is unavailable. */
@@ -131,51 +121,52 @@ const LINUX_BYOL_FALLBACK_FRACTION = 0.25;
 
 /**
  * Estimated monthly saving from applying Azure Hybrid Benefit to a Windows VM:
- * the delta between the Windows-licensed and Linux (license-free) retail price
- * for the same SKU/region — Hybrid Benefit removes the Windows Server license
- * fee, leaving the base compute rate, which is the Linux price. Falls back to
- * a documented ~40% approximation (Microsoft's commonly cited Hybrid Benefit
- * saving on Windows Server compute) when either side's retail price can't be
- * found.
+ * the delta between the Windows-licensed and base (license-free) retail price
+ * for the same SKU/region, both read from a single Retail Prices API call and
+ * split by whether `productName` mentions Windows — Hybrid Benefit removes
+ * the Windows Server license fee, leaving the base compute rate. Falls back
+ * to a documented ~40% approximation of the finding's own resource cost
+ * (Microsoft's commonly cited Hybrid Benefit saving on Windows Server
+ * compute) when either price can't be found in the catalog. A missing price
+ * is distinguished from a genuinely free one by item presence, not by a
+ * `> 0` check, so a real $0 meter is never mistaken for "not found."
  */
 export async function estimateHybridBenefitMonthlySavings(
   resource: ResourceGraphRow,
+  estimatedMonthlyCost: number,
 ): Promise<number> {
-  const linuxPrice = await estimateVmCost(resource).catch(() => 0);
   try {
-    const windowsPrice = await estimateWindowsVmCost(resource);
-    if (windowsPrice > 0 && linuxPrice > 0 && windowsPrice > linuxPrice) {
-      return windowsPrice - linuxPrice;
+    const items = await fetchVmPriceItems(resource);
+    const basePrice = items.find((item) => !item.productName.includes("Windows"));
+    const windowsPrice = items.find((item) => item.productName.includes("Windows"));
+    if (basePrice && windowsPrice) {
+      const delta = monthlyPriceFromItems([windowsPrice]) - monthlyPriceFromItems([basePrice]);
+      if (delta > 0) {
+        return delta;
+      }
     }
   } catch (error) {
     console.error(`Hybrid Benefit savings estimation failed for ${resource.id}`, error);
   }
-  return linuxPrice * HYBRID_BENEFIT_FALLBACK_FRACTION;
+  return estimatedMonthlyCost * HYBRID_BENEFIT_FALLBACK_FRACTION;
 }
 
 /**
  * Estimated monthly saving from bringing your own RHEL/SUSE subscription
- * (BYOL) instead of paying Azure's pay-as-you-go distro price: the delta
- * between the distro-specific PAYG retail price and the base Linux
- * (license-free) retail price for the same SKU/region. Falls back to a
- * documented ~25% approximation (typical RHEL/SUSE subscription premium)
- * when either side's retail price can't be found.
+ * (BYOL) instead of paying for Azure's built-in distro license.
+ *
+ * Unlike Hybrid Benefit, the RHEL/SUSE license fee is billed as its own
+ * meter under the "Virtual Machines Licenses" service, banded by the VM's
+ * actual vCPU count rather than by its SKU/region — pricing it precisely
+ * would require knowing that vCPU count, which the scanner doesn't collect
+ * today (Resource Graph's `hardwareProfile.vmSize` names the SKU, not its
+ * core count). Until that data is available, this uses a documented ~25%
+ * approximation of the finding's own resource cost (a typical RHEL/SUSE
+ * subscription premium) rather than guessing at a vCPU-band lookup this
+ * scanner can't yet do correctly.
  */
-export async function estimateLinuxByolMonthlySavings(
-  resource: ResourceGraphRow,
-  publisher: string,
-): Promise<number> {
-  const baseLinuxPrice = await estimateVmCost(resource).catch(() => 0);
-  try {
-    const distroFragment = publisher.toLowerCase() === "suse" ? "SUSE" : "Red Hat";
-    const distroPrice = await estimateLinuxDistroVmCost(resource, distroFragment);
-    if (distroPrice > 0 && baseLinuxPrice > 0 && distroPrice > baseLinuxPrice) {
-      return distroPrice - baseLinuxPrice;
-    }
-  } catch (error) {
-    console.error(`Linux BYOL savings estimation failed for ${resource.id}`, error);
-  }
-  return baseLinuxPrice * LINUX_BYOL_FALLBACK_FRACTION;
+export function estimateLinuxByolMonthlySavings(estimatedMonthlyCost: number): number {
+  return estimatedMonthlyCost * LINUX_BYOL_FALLBACK_FRACTION;
 }
 
 async function estimateVpnGatewayCost(resource: ResourceGraphRow): Promise<number> {

@@ -1,9 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResourceGraphRow } from "@/lib/azure/resourceGraph";
 import {
   estimateHybridBenefitMonthlySavings,
   estimateLinuxByolMonthlySavings,
 } from "@/lib/azure/retailPrices";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function vmResource(vmSize: string): ResourceGraphRow {
   return {
@@ -15,106 +19,124 @@ function vmResource(vmSize: string): ResourceGraphRow {
   };
 }
 
-function priceResponse(price: number) {
+interface PriceItemOverrides {
+  retailPrice?: number;
+  unitOfMeasure?: string;
+  meterName?: string;
+  skuName?: string;
+  productName?: string;
+  type?: string;
+}
+
+function priceItem(overrides: PriceItemOverrides = {}) {
   return {
-    ok: true,
-    json: async () => ({
-      Items: [
-        {
-          retailPrice: price,
-          unitOfMeasure: "1/Month",
-          meterName: "D2 v2",
-          skuName: "D2_v2",
-          productName: "Virtual Machines Dv2 Series",
-          armRegionName: "eastus",
-          type: "Consumption",
-        },
-      ],
-    }),
+    retailPrice: 1,
+    unitOfMeasure: "1 Hour",
+    meterName: "D2 v2",
+    skuName: "D2 v2",
+    productName: "Virtual Machines Dv2 Series",
+    armRegionName: "eastus",
+    type: "Consumption",
+    ...overrides,
   };
 }
 
-function emptyResponse() {
-  return { ok: true, json: async () => ({ Items: [] }) };
+function jsonResponse(items: unknown[]) {
+  return { ok: true, json: async () => ({ Items: items }) };
 }
 
 describe("estimateHybridBenefitMonthlySavings", () => {
-  // The Linux/base-price query's own filter contains the literal substring
-  // "not contains(productName, 'Windows')", so mocks must key off "Linux"
-  // (unique to that query) rather than "Windows" (present in both URLs).
-  it("returns the Windows-vs-Linux retail price delta when both are found", async () => {
-    const fetchMock = vi.fn().mockImplementation((url: string) => {
-      if (url.includes("Linux")) return Promise.resolve(priceResponse(60));
-      return Promise.resolve(priceResponse(100));
-    });
+  it("sends a single armSkuName-based query, never using the OData 'not' operator the live API rejects", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
     vi.stubGlobal("fetch", fetchMock);
 
-    const savings = await estimateHybridBenefitMonthlySavings(vmResource("Standard_D2_v2"));
+    await estimateHybridBenefitMonthlySavings(vmResource("Standard_D2_v2"), 100);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    const decodedFilter = decodeURIComponent(url.split("$filter=")[1]);
+    expect(decodedFilter).toContain("armSkuName eq 'Standard_D2_v2'");
+    expect(decodedFilter).toContain("armRegionName eq 'eastus'");
+    expect(decodedFilter).not.toMatch(/\bnot\b/);
+  });
+
+  it("returns the Windows-vs-base retail price delta from a single response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          priceItem({ retailPrice: 0.146, productName: "Virtual Machines Dv2 Series" }),
+          priceItem({ retailPrice: 0.238, productName: "Virtual Machines Dv2 Series Windows" }),
+        ]),
+      ),
+    );
+
+    const savings = await estimateHybridBenefitMonthlySavings(vmResource("Standard_D2_v2"), 999);
+
+    expect(savings).toBeCloseTo((0.238 - 0.146) * 730, 5);
+  });
+
+  it("excludes Spot and Low Priority meters so they can't be mistaken for the standard price", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          priceItem({
+            retailPrice: 0.029,
+            skuName: "D2 v2 Low Priority",
+            productName: "Virtual Machines Dv2 Series",
+          }),
+          priceItem({
+            retailPrice: 0.101,
+            skuName: "D2 v2 Low Priority",
+            productName: "Virtual Machines Dv2 Series Windows",
+          }),
+          priceItem({ retailPrice: 0.146, skuName: "D2 v2", productName: "Virtual Machines Dv2 Series" }),
+          priceItem({
+            retailPrice: 0.238,
+            skuName: "D2 v2",
+            productName: "Virtual Machines Dv2 Series Windows",
+          }),
+        ]),
+      ),
+    );
+
+    const savings = await estimateHybridBenefitMonthlySavings(vmResource("Standard_D2_v2"), 999);
+
+    expect(savings).toBeCloseTo((0.238 - 0.146) * 730, 5);
+  });
+
+  it("falls back to a 40% approximation of the finding's own resource cost when no price is found", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([])));
+
+    const savings = await estimateHybridBenefitMonthlySavings(vmResource("Standard_D2_v2"), 100);
 
     expect(savings).toBe(40);
   });
 
-  it("falls back to a 40% approximation of the Linux price when the Windows price can't be found", async () => {
-    const fetchMock = vi.fn().mockImplementation((url: string) => {
-      if (url.includes("Linux")) return Promise.resolve(priceResponse(60));
-      return Promise.resolve(emptyResponse());
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const savings = await estimateHybridBenefitMonthlySavings(vmResource("Standard_D2_v2"));
-
-    expect(savings).toBe(24);
-  });
-
-  it("returns 0 when the VM size is missing", async () => {
+  it("falls back without fetching when the VM size is missing", async () => {
     const resource: ResourceGraphRow = {
       id: "/subscriptions/sub-1/vm-1",
       type: "microsoft.compute/virtualmachines",
       subscriptionId: "sub-1",
       properties: {},
     };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
 
-    const savings = await estimateHybridBenefitMonthlySavings(resource);
+    const savings = await estimateHybridBenefitMonthlySavings(resource, 100);
 
-    expect(savings).toBe(0);
+    expect(savings).toBe(40);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
 describe("estimateLinuxByolMonthlySavings", () => {
-  it("returns the distro-vs-base-Linux retail price delta when both are found", async () => {
-    const fetchMock = vi.fn().mockImplementation((url: string) => {
-      if (url.includes("Red%20Hat")) return Promise.resolve(priceResponse(90));
-      return Promise.resolve(priceResponse(60));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const savings = await estimateLinuxByolMonthlySavings(vmResource("Standard_D2_v2"), "RedHat");
-
-    expect(savings).toBe(30);
+  it("returns a 25% approximation of the finding's resource cost", () => {
+    expect(estimateLinuxByolMonthlySavings(100)).toBe(25);
   });
 
-  it("falls back to a 25% approximation of the base Linux price when the distro price can't be found", async () => {
-    const fetchMock = vi.fn().mockImplementation((url: string) => {
-      if (url.includes("SUSE")) return Promise.resolve(emptyResponse());
-      return Promise.resolve(priceResponse(60));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const savings = await estimateLinuxByolMonthlySavings(vmResource("Standard_D2_v2"), "SUSE");
-
-    expect(savings).toBe(15);
-  });
-
-  it("returns 0 when the VM size is missing", async () => {
-    const resource: ResourceGraphRow = {
-      id: "/subscriptions/sub-1/vm-1",
-      type: "microsoft.compute/virtualmachines",
-      subscriptionId: "sub-1",
-      properties: {},
-    };
-
-    const savings = await estimateLinuxByolMonthlySavings(resource, "RedHat");
-
-    expect(savings).toBe(0);
+  it("returns 0 when the resource cost is 0", () => {
+    expect(estimateLinuxByolMonthlySavings(0)).toBe(0);
   });
 });

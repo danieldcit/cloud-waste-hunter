@@ -175,13 +175,25 @@ original, corrigidos antes de avançar para a Categoria 2:
   ociosa, VM parada mantendo disco).
 - **Novo campo `estimatedMonthlySavings` em `WasteFinding`** (nullable), separado de
   `estimatedMonthlyCost`. Para regras "deletar" (as 6 `HARD_SAVING` acima), a economia é o
-  custo inteiro do recurso. Para `VM_MISSING_HYBRID_BENEFIT`/`VM_MISSING_LINUX_BYOL`, a
-  economia é o delta de preço de varejo entre a SKU com e sem a licença
-  (`estimateHybridBenefitMonthlySavings`/`estimateLinuxByolMonthlySavings` em
-  `src/lib/azure/retailPrices.ts`), com fallback documentado (~40%/~25% do custo) quando o
-  preço de varejo de um dos dois lados não é encontrado. Para `VM_OUTDATED_SKU_GENERATION` o
-  valor fica `null` — não há como estimar a economia sem saber a SKU de destino recomendada, e
-  é mais honesto não estimar do que inventar um número.
+  custo inteiro do recurso. Para `VM_OUTDATED_SKU_GENERATION` o valor fica `null` — não há como
+  estimar a economia sem saber a SKU de destino recomendada, e é mais honesto não estimar do
+  que inventar um número.
+- **`VM_MISSING_HYBRID_BENEFIT`**: economia = delta de preço de varejo entre a SKU com e sem
+  Windows, via uma única consulta à Retail Prices API filtrando por `armSkuName` (não
+  `skuName`, que exige o nome exato com espaço, ex. `"D2 v2"`, e não pelo operador OData `not`,
+  que a API rejeita com HTTP 400) — ver `estimateHybridBenefitMonthlySavings` em
+  `src/lib/azure/retailPrices.ts`. **Validado contra a API real** (não só mockado): para
+  `Standard_D2_v2`/`eastus`, retorna US$67,16/mês (base US$0,146/h, Windows US$0,238/h),
+  batendo com o preço público da Azure. Cai para uma aproximação de ~40% do custo do achado
+  quando o preço de um dos dois lados não é encontrado no catálogo.
+- **`VM_MISSING_LINUX_BYOL`**: **não** usa delta exato, ao contrário do que a v1 original desta
+  spec tentou implementar. A licença RHEL/SUSE é cobrada como um medidor separado no serviço
+  "Virtual Machines Licenses", banda por **contagem de vCPUs da VM** (não por SKU/região) — algo
+  que o scanner não coleta hoje (`hardwareProfile.vmSize` no Resource Graph só dá o nome da SKU,
+  não o número de vCPUs). Implementar isso direito exigiria uma tabela SKU→vCPU ou uma chamada
+  nova à API de Compute. Por ora, `estimateLinuxByolMonthlySavings` usa só a aproximação de 25%
+  do custo do achado, documentada como tal — não é um "fallback de um cálculo exato", é o único
+  método usado. Fica registrado como trabalho futuro (não bloqueia a Categoria 2).
 - **`computeDashboardSummary`** agora soma `estimatedMonthlySavings` (deduplicado por
   `resourceId`, usando o máximo) em vez de `estimatedMonthlyCost` — isso também corrigiu um bug
   de contagem dupla/tripla quando um mesmo recurso gera múltiplos achados.

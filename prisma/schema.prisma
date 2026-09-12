@@ -101,17 +101,17 @@ enum FindingStatus {
 }
 
 model WasteFinding {
-  id                   String           @id @default(cuid())
-  subscriptionId       String
-  subscription         Subscription     @relation(fields: [subscriptionId], references: [id])
-  ruleType             WasteRuleType
-  resourceId           String
-  estimatedMonthlyCost Float
-  detectedAt           DateTime         @default(now())
-  status               FindingStatus    @default(OPEN)
-  savingsCategory      SavingsCategory?
-  metricObserved       Float?
-  periodAnalyzedDays   Int?
+  id                      String           @id @default(cuid())
+  subscriptionId          String
+  subscription            Subscription     @relation(fields: [subscriptionId], references: [id])
+  ruleType                WasteRuleType
+  resourceId              String
+  estimatedMonthlyCost    Float
+  detectedAt              DateTime         @default(now())
+  status                  FindingStatus    @default(OPEN)
+  savingsCategory         SavingsCategory?
+  metricObserved          Float?
+  periodAnalyzedDays      Int?
   estimatedMonthlySavings Float?
 
   @@unique([subscriptionId, resourceId, ruleType])
