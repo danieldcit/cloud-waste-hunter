@@ -8,6 +8,10 @@ const CATEGORY_BY_RULE: Record<WasteRuleType, DashboardCategory> = {
   IDLE_VM: "compute",
   UNASSOCIATED_PUBLIC_IP: "network",
   IDLE_VPN_GATEWAY: "network",
+  VM_MISSING_HYBRID_BENEFIT: "compute",
+  VM_MISSING_LINUX_BYOL: "compute",
+  VM_OUTDATED_SKU_GENERATION: "compute",
+  VM_STOPPED_RETAINING_RESOURCES: "compute",
 };
 
 export function categoryForRule(ruleType: WasteRuleType): DashboardCategory {
