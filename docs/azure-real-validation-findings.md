@@ -23,7 +23,7 @@ the dashboard's cost cards and "Tendência de custo" chart show `$0.00` /
 "sem dados ainda" for this subscription type — it's an Azure platform
 limitation, not an app bug.
 
-### 2. Personal Microsoft accounts collapse to a single tenant ID
+### 2. Personal Microsoft accounts collapse to a single tenant ID — fixed
 
 With `auth.ts`'s issuer set to `https://login.microsoftonline.com/common/v2.0`
 (required so personal accounts can sign in at all), the `tid` claim on the
@@ -35,10 +35,15 @@ user would bootstrap into the **same** `Customer` row — breaking
 multi-tenant isolation for personal accounts. Work/school (Entra ID
 organizational) accounts are unaffected — they get their real tenant id.
 
-Not fixed in this session. Flag before allowing personal-account signup
-in production; either block personal accounts for real customers (revert
-issuer to `organizations`) or key customers by `sub`/`oid` instead of
-tenant id when the tenant is the consumers placeholder.
+Fixed in the `jwt` callback: when `profile.tid` equals the consumers
+placeholder, key the customer by `` `personal:${profile.sub}` `` instead of
+the raw tenant id — `sub` is per-user-per-app and already what the
+provider uses as the user's own `id`, so it correctly isolates one
+personal-account user from another while organizational accounts keep
+sharing a `Customer` row per real tenant, as intended. Validated by
+signing out/in and confirming a new, correctly-isolated `Customer` row
+was created; the existing test subscription was migrated onto it by
+hand (one-off local DB cleanup, not part of the app).
 
 ### 3. Azure Lighthouse cannot delegate within the same tenant
 
