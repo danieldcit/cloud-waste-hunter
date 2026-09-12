@@ -88,9 +88,12 @@ async function estimatePublicIpCost(resource: ResourceGraphRow): Promise<number>
  * Fetches every Consumption-priced meter for this VM's exact size/region via
  * `armSkuName` (the literal ARM size, e.g. "Standard_D2_v2" — unlike `skuName`,
  * it needs no prefix-stripping and matches exactly one VM family), excluding
- * Spot and Low Priority variants, which are separate, much cheaper meters that
- * would otherwise be picked up by a naive "first match" and badly skew any
- * price comparison.
+ * variant meters that would otherwise be picked up by a naive "first match"
+ * and badly skew any price comparison: Spot and Low Priority (separate, much
+ * cheaper meters for interruptible capacity) and classic Cloud Services
+ * (a different, Windows-only-priced product that happens to share the same
+ * `armSkuName` and lacks "Windows" in its own product name, so it can get
+ * mistaken for the plain Linux/base price otherwise).
  */
 async function fetchVmPriceItems(resource: ResourceGraphRow): Promise<RetailPriceItem[]> {
   const region = resource.location ?? "eastus";
@@ -105,14 +108,29 @@ async function fetchVmPriceItems(resource: ResourceGraphRow): Promise<RetailPric
     (item) =>
       item.unitOfMeasure === "1 Hour" &&
       !item.skuName.includes("Spot") &&
-      !item.skuName.includes("Low Priority"),
+      !item.skuName.includes("Low Priority") &&
+      !/cloud\s*services/i.test(item.productName),
   );
 }
 
+function isWindowsVm(resource: ResourceGraphRow): boolean {
+  const storageProfile = resource.properties.storageProfile as
+    | { osDisk?: { osType?: string } }
+    | undefined;
+  return storageProfile?.osDisk?.osType === "Windows";
+}
+
+/**
+ * Estimates a VM's own monthly compute cost from the retail catalog, priced
+ * for its actual OS — a Windows VM is priced at the Windows-licensed rate,
+ * not the cheaper base/Linux one, so this stays consistent with whatever
+ * license-saving estimate (e.g. Hybrid Benefit) gets computed against it.
+ */
 async function estimateVmCost(resource: ResourceGraphRow): Promise<number> {
   const items = await fetchVmPriceItems(resource);
-  const basePrice = items.find((item) => !item.productName.includes("Windows"));
-  return basePrice ? monthlyPriceFromItems([basePrice]) : 0;
+  const wantsWindows = isWindowsVm(resource);
+  const price = items.find((item) => item.productName.includes("Windows") === wantsWindows);
+  return price ? monthlyPriceFromItems([price]) : 0;
 }
 
 /** Used only when retail pricing data for the license delta itself is unavailable. */

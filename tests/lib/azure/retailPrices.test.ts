@@ -3,19 +3,23 @@ import type { ResourceGraphRow } from "@/lib/azure/resourceGraph";
 import {
   estimateHybridBenefitMonthlySavings,
   estimateLinuxByolMonthlySavings,
+  estimateRetailMonthlyCost,
 } from "@/lib/azure/retailPrices";
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function vmResource(vmSize: string): ResourceGraphRow {
+function vmResource(vmSize: string, osType?: "Windows" | "Linux"): ResourceGraphRow {
   return {
     id: "/subscriptions/sub-1/vm-1",
     type: "microsoft.compute/virtualmachines",
     subscriptionId: "sub-1",
     location: "eastus",
-    properties: { hardwareProfile: { vmSize } },
+    properties: {
+      hardwareProfile: { vmSize },
+      ...(osType ? { storageProfile: { osDisk: { osType } } } : {}),
+    },
   };
 }
 
@@ -106,6 +110,25 @@ describe("estimateHybridBenefitMonthlySavings", () => {
     expect(savings).toBeCloseTo((0.238 - 0.146) * 730, 5);
   });
 
+  it("excludes classic Cloud Services meters, which share the same armSkuName and lack 'Windows' in their product name", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          // Cloud Services is Windows-only-priced but its productName doesn't say "Windows" —
+          // without exclusion this would be picked as the (wrong, too-expensive) "base" price.
+          priceItem({ retailPrice: 5.696, productName: "Dasv5 Series Cloud Services" }),
+          priceItem({ retailPrice: 2.752, productName: "Virtual Machines Dasv5 Series" }),
+          priceItem({ retailPrice: 5.696, productName: "Virtual Machines Dasv5 Series Windows" }),
+        ]),
+      ),
+    );
+
+    const savings = await estimateHybridBenefitMonthlySavings(vmResource("Standard_D64as_v5"), 999);
+
+    expect(savings).toBeCloseTo((5.696 - 2.752) * 730, 5);
+  });
+
   it("falls back to a 40% approximation of the finding's own resource cost when no price is found", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([])));
 
@@ -128,6 +151,56 @@ describe("estimateHybridBenefitMonthlySavings", () => {
 
     expect(savings).toBe(40);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("estimateRetailMonthlyCost (VM path)", () => {
+  it("prices a Windows VM at the Windows rate, not the cheaper base rate", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          priceItem({ retailPrice: 0.146, productName: "Virtual Machines Dv2 Series" }),
+          priceItem({ retailPrice: 0.238, productName: "Virtual Machines Dv2 Series Windows" }),
+        ]),
+      ),
+    );
+
+    const cost = await estimateRetailMonthlyCost(vmResource("Standard_D2_v2", "Windows"));
+
+    expect(cost).toBeCloseTo(0.238 * 730, 5);
+  });
+
+  it("prices a non-Windows VM at the base rate", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          priceItem({ retailPrice: 0.146, productName: "Virtual Machines Dv2 Series" }),
+          priceItem({ retailPrice: 0.238, productName: "Virtual Machines Dv2 Series Windows" }),
+        ]),
+      ),
+    );
+
+    const cost = await estimateRetailMonthlyCost(vmResource("Standard_D2_v2", "Linux"));
+
+    expect(cost).toBeCloseTo(0.146 * 730, 5);
+  });
+
+  it("excludes classic Cloud Services meters when pricing a non-Windows VM", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          priceItem({ retailPrice: 5.696, productName: "Dasv5 Series Cloud Services" }),
+          priceItem({ retailPrice: 2.752, productName: "Virtual Machines Dasv5 Series" }),
+        ]),
+      ),
+    );
+
+    const cost = await estimateRetailMonthlyCost(vmResource("Standard_D64as_v5", "Linux"));
+
+    expect(cost).toBeCloseTo(2.752 * 730, 5);
   });
 });
 

@@ -50,5 +50,9 @@ export async function estimateMonthlySavings(
       return estimateLinuxByolMonthlySavings(estimatedMonthlyCost);
     case "unknown":
       return null;
+    default: {
+      const exhaustiveCheck: never = method;
+      throw new Error(`Unhandled savings method: ${exhaustiveCheck}`);
+    }
   }
 }
