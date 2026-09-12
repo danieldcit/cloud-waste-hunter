@@ -16,10 +16,14 @@ vi.mock("@/lib/azure/subscriptionCost", () => ({
   getSubscriptionForecast: vi.fn(),
   getSubscriptionDailyCostTrend: vi.fn(),
 }));
+vi.mock("@/lib/azure/retailPrices", () => ({
+  estimateRetailMonthlyCost: vi.fn(),
+}));
 
 import { queryResourceGraph } from "@/lib/azure/resourceGraph";
 import { estimateMonthlyCost } from "@/lib/azure/costManagement";
 import { getAverageCpuPercent } from "@/lib/azure/monitorMetrics";
+import { estimateRetailMonthlyCost } from "@/lib/azure/retailPrices";
 import {
   getSubscriptionMonthToDateSpend,
   getSubscriptionForecast,
@@ -128,6 +132,7 @@ describe("runScan", () => {
       },
     ]);
     vi.mocked(estimateMonthlyCost).mockRejectedValueOnce(new Error("cost service unavailable"));
+    vi.mocked(estimateRetailMonthlyCost).mockResolvedValueOnce(0);
 
     await runScan(subscription.id);
 
@@ -144,6 +149,40 @@ describe("runScan", () => {
       ruleType: "ORPHANED_DISK",
       resourceId: "disk-3",
       estimatedMonthlyCost: 0,
+    });
+  });
+
+  it("falls back to a retail price estimate when Cost Management returns no data", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-retail", name: "RetailFallback" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-retail", displayName: "RetailFallback" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "disk-retail",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-retail",
+        location: "eastus",
+        sku: { name: "Standard_LRS" },
+        properties: { diskState: "Unattached", diskSizeGB: 32 },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValueOnce(0);
+    vi.mocked(estimateRetailMonthlyCost).mockResolvedValueOnce(1.536);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      ruleType: "ORPHANED_DISK",
+      resourceId: "disk-retail",
+      estimatedMonthlyCost: 1.536,
     });
   });
 
