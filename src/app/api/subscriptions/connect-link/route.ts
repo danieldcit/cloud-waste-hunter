@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireCustomerId } from "@/lib/tenant";
 
 const TEMPLATE_URI =
-  "https://cloudwastehunter.blob.core.windows.net/templates/lighthouse.json";
+  "https://raw.githubusercontent.com/danigomesdev/cloud-waste-hunter/master/infra/lighthouse/lighthouse.json";
 
 export async function GET() {
   await requireCustomerId();

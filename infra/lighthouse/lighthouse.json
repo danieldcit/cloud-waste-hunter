@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.47.16.16243",
+      "templateHash": "2482876743528351007"
+    }
+  },
+  "parameters": {
+    "mspOfferName": {
+      "type": "string",
+      "defaultValue": "Cloud Waste Hunter",
+      "metadata": {
+        "description": "Display name shown to the customer for this delegation"
+      }
+    },
+    "providerPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Object ID of the provider security group granted delegated access"
+      }
+    },
+    "providerTenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Tenant ID of the provider (Cloud Waste Hunter)"
+      }
+    }
+  },
+  "variables": {
+    "registrationDefinitionName": "[guid(parameters('mspOfferName'), parameters('providerTenantId'), subscription().subscriptionId)]",
+    "registrationAssignmentName": "[guid(variables('registrationDefinitionName'), subscription().subscriptionId)]",
+    "readerRoleId": "acdd72a7-3385-48ef-bd42-f606fbe8a4b8"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ManagedServices/registrationDefinitions",
+      "apiVersion": "2022-10-01",
+      "name": "[variables('registrationDefinitionName')]",
+      "properties": {
+        "registrationDefinitionName": "[parameters('mspOfferName')]",
+        "description": "Grants Cloud Waste Hunter read-only access to detect cost-saving opportunities.",
+        "managedByTenantId": "[parameters('providerTenantId')]",
+        "authorizations": [
+          {
+            "principalId": "[parameters('providerPrincipalId')]",
+            "principalIdDisplayName": "Cloud Waste Hunter Scanner",
+            "roleDefinitionId": "[variables('readerRoleId')]"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.ManagedServices/registrationAssignments",
+      "apiVersion": "2022-10-01",
+      "name": "[variables('registrationAssignmentName')]",
+      "properties": {
+        "registrationDefinitionId": "[subscriptionResourceId('Microsoft.ManagedServices/registrationDefinitions', variables('registrationDefinitionName'))]"
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.ManagedServices/registrationDefinitions', variables('registrationDefinitionName'))]"
+      ]
+    }
+  ]
+}

@@ -11,7 +11,7 @@ param providerTenantId string
 
 var registrationDefinitionName = guid(mspOfferName, providerTenantId, subscription().subscriptionId)
 var registrationAssignmentName = guid(registrationDefinitionName, subscription().subscriptionId)
-var readerRoleId = 'acdd72a7-3385-48ef-bd42-f606fba81ae7'
+var readerRoleId = 'acdd72a7-3385-48ef-bd42-f606fbe8a4b8'
 
 resource registrationDefinition 'Microsoft.ManagedServices/registrationDefinitions@2022-10-01' = {
   name: registrationDefinitionName
