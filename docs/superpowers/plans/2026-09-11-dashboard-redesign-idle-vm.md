@@ -2346,3 +2346,11 @@ Add a short note to `docs/superpowers/plans/2026-09-11-dashboard-redesign-idle-v
 git add docs/superpowers/plans/2026-09-11-dashboard-redesign-idle-vm.md
 git commit -m "docs: record dashboard redesign end-to-end validation result"
 ```
+
+## Validation Log
+
+**2026-09-11 — Controller-run validation (no real Entra ID/Azure available in this session):**
+
+- Full suite re-verified clean after all 12 tasks and the final-review fix wave: 82/82 tests, 3 consecutive runs, no flake reproduction (one earlier anomalous timeout was environmental, not a code defect). `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean.
+- Visual validation: rendered the real, committed `DashboardClient`/`CostTrendChart` components via a temporary, uncommitted preview route fed with mock props (deleted immediately after). Confirmed live and working: light/dark theme toggle, pt-BR/en language switch across all redesigned labels, category filter (Storage/Compute/Network) correctly narrowing the table, stat cards and cost-trend chart rendering prop data with correct formatting and zero-state handling. Screenshots reviewed by the user.
+- `/ambientes`'s add-environment form, real Entra ID login end-to-end, and a live smoke test of the Forecast API body (flagged unverified in the final review) were **not** exercised against real Azure/Entra ID — deferred, same limitation as Fase 1's Task 15. Steps 2-4 above remain open for whoever has access to a real test tenant/subscription.
