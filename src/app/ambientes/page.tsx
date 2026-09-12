@@ -1,9 +1,13 @@
 import { prisma } from "@/lib/prisma";
-import { requireCustomerId } from "@/lib/tenant";
+import { auth } from "@/auth";
+import { requireCustomerId, getOperatorCustomerId, getManagedClients } from "@/lib/tenant";
 import { AmbientesClient } from "@/components/ambientes/AmbientesClient";
 
 export default async function AmbientesPage() {
   const customerId = await requireCustomerId();
+  const operatorCustomerId = await getOperatorCustomerId();
+  const session = await auth();
+  const managedClients = await getManagedClients(operatorCustomerId);
 
   const subscriptions = await prisma.subscription.findMany({
     where: { customerId },
@@ -18,6 +22,10 @@ export default async function AmbientesPage() {
 
   return (
     <AmbientesClient
+      operatorCustomerId={operatorCustomerId}
+      operatorLabel={session?.user?.name ?? session?.user?.email ?? ""}
+      activeClientId={customerId}
+      initialManagedClients={managedClients}
       initialSubscriptions={subscriptions.map((s) => ({
         id: s.id,
         azureSubscriptionId: s.azureSubscriptionId,

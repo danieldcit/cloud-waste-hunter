@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { isValidSubscriptionId } from "@/lib/ambientes/validateSubscriptionId";
+import { addManagedClient } from "@/app/ambientes/actions";
+import { ClientSwitcher } from "@/components/ClientSwitcher";
 
 interface AmbienteRow {
   id: string;
@@ -16,12 +18,28 @@ interface ConnectLinkInfo {
   deployUrl: string;
 }
 
+interface ManagedClient {
+  id: string;
+  name: string;
+}
+
 export function AmbientesClient({
+  operatorCustomerId,
+  operatorLabel,
+  activeClientId,
+  initialManagedClients,
   initialSubscriptions,
 }: {
+  operatorCustomerId: string;
+  operatorLabel: string;
+  activeClientId: string;
+  initialManagedClients: ManagedClient[];
   initialSubscriptions: AmbienteRow[];
 }) {
   const { t } = useLocale();
+  const [managedClients, setManagedClients] = useState(initialManagedClients);
+  const [newClientName, setNewClientName] = useState("");
+  const [clientFormError, setClientFormError] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
   const [azureSubscriptionId, setAzureSubscriptionId] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -117,8 +135,61 @@ export function AmbientesClient({
     });
   }
 
+  async function handleAddClient(event: React.FormEvent) {
+    event.preventDefault();
+    const trimmed = newClientName.trim();
+    if (!trimmed) {
+      setClientFormError(t("ambientes.clientNameRequired"));
+      return;
+    }
+    setClientFormError(null);
+    try {
+      const created = await addManagedClient(trimmed);
+      setManagedClients((current) =>
+        [...current, created].sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setNewClientName("");
+    } catch {
+      setClientFormError(t("ambientes.addClientFailed"));
+    }
+  }
+
   return (
     <main className="p-6">
+      <header className="mb-6 flex items-center justify-between">
+        <span className="text-lg font-bold">Cloud Waste Hunter</span>
+        <ClientSwitcher
+          myAccountId={operatorCustomerId}
+          myAccountLabel={operatorLabel}
+          activeClientId={activeClientId}
+          managedClients={managedClients}
+        />
+      </header>
+
+      <section className="mb-8">
+        <h2 className="mb-2 text-lg font-semibold">{t("ambientes.clientsHeading")}</h2>
+        <form onSubmit={handleAddClient} className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-sm mb-1" htmlFor="clientName">
+              {t("ambientes.clientName")}
+            </label>
+            <input
+              id="clientName"
+              className="border rounded px-3 py-2"
+              value={newClientName}
+              onChange={(e) => setNewClientName(e.target.value)}
+            />
+          </div>
+          <button
+            type="submit"
+            className="bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700"
+          >
+            {t("ambientes.addClient")}
+          </button>
+          {clientFormError && <p className="text-red-600 text-sm">{clientFormError}</p>}
+        </form>
+      </section>
+
       <h1 className="text-2xl font-bold mb-4">{t("ambientes.title")}</h1>
 
       <form onSubmit={handleAddEnvironment} className="mb-8 flex flex-wrap items-end gap-3">
