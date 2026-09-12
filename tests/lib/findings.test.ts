@@ -6,7 +6,12 @@ vi.mock("@/auth", () => ({
   auth: vi.fn(),
 }));
 
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(),
+}));
+
 import { auth } from "@/auth";
+import { cookies } from "next/headers";
 import { listFindingsForCurrentCustomer } from "@/lib/findings";
 
 async function seedCustomerWithFinding(tenantId: string, resourceId: string) {
@@ -32,7 +37,12 @@ async function seedCustomerWithFinding(tenantId: string, resourceId: string) {
 }
 
 describe("listFindingsForCurrentCustomer", () => {
-  beforeEach(resetDb);
+  beforeEach(async () => {
+    await resetDb();
+    vi.mocked(cookies).mockResolvedValue({
+      get: vi.fn().mockReturnValue(undefined),
+    } as never);
+  });
 
   it("only returns findings belonging to the logged-in customer's subscriptions", async () => {
     const customerA = await seedCustomerWithFinding("findings-tenant-a", "disk-a");
