@@ -20,13 +20,16 @@ describe("/api/subscriptions", () => {
 
     const request = new Request("http://localhost/api/subscriptions", {
       method: "POST",
-      body: JSON.stringify({ azureSubscriptionId: "sub-1", displayName: "Acme Prod" }),
+      body: JSON.stringify({
+        azureSubscriptionId: "aaaaaaaa-1111-2222-3333-444444444444",
+        displayName: "Acme Prod",
+      }),
     });
     const response = await POST(request);
     expect(response.status).toBe(201);
 
     const created = await prisma.subscription.findUniqueOrThrow({
-      where: { azureSubscriptionId: "sub-1" },
+      where: { azureSubscriptionId: "aaaaaaaa-1111-2222-3333-444444444444" },
     });
     expect(created.customerId).toBe(customer.id);
     expect(created.status).toBe("PENDING");
@@ -42,6 +45,55 @@ describe("/api/subscriptions", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(400);
+  });
+
+  it("rejects a POST with a malformed azureSubscriptionId", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-malformed", name: "Malformed" },
+    });
+    vi.mocked(requireCustomerId).mockResolvedValue(customer.id);
+
+    const request = new Request("http://localhost/api/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({
+        azureSubscriptionId: "not-a-guid",
+        displayName: "Bad Sub",
+      }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+
+    const created = await prisma.subscription.findMany({
+      where: { customerId: customer.id },
+    });
+    expect(created).toHaveLength(0);
+  });
+
+  it("returns 409, not a raw 500, when azureSubscriptionId already exists", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-dup", name: "Dup" },
+    });
+    vi.mocked(requireCustomerId).mockResolvedValue(customer.id);
+
+    const validGuid = "11111111-1111-1111-1111-111111111111";
+
+    const firstRequest = new Request("http://localhost/api/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({ azureSubscriptionId: validGuid, displayName: "First" }),
+    });
+    const firstResponse = await POST(firstRequest);
+    expect(firstResponse.status).toBe(201);
+
+    const secondRequest = new Request("http://localhost/api/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({ azureSubscriptionId: validGuid, displayName: "Second" }),
+    });
+    const secondResponse = await POST(secondRequest);
+
+    expect(secondResponse.status).toBe(409);
+    const body = await secondResponse.json();
+    expect(body.error).toBeTruthy();
   });
 
   it("only lists subscriptions belonging to the current customer", async () => {

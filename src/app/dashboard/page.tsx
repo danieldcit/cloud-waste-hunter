@@ -9,7 +9,7 @@ export default async function DashboardPage() {
   const session = await auth();
 
   const findings = await prisma.wasteFinding.findMany({
-    where: { subscription: { customerId } },
+    where: { subscription: { customerId }, status: "OPEN" },
     orderBy: { detectedAt: "desc" },
     include: { subscription: true },
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { translate, type Locale } from "@/lib/i18n/dictionaries";
 
 const STORAGE_KEY = "cwh-locale";
@@ -15,16 +15,14 @@ interface LocaleContextValue {
 const LocaleContext = createContext<LocaleContextValue | undefined>(undefined);
 
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(() => {
-    if (typeof window === "undefined") {
-      return DEFAULT_LOCALE;
-    }
+  const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
+
+  useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY) as Locale | null;
     if (stored === "pt-BR" || stored === "en" || stored === "es") {
-      return stored;
+      setLocaleState(stored);
     }
-    return DEFAULT_LOCALE;
-  });
+  }, []);
 
   const setLocale = (next: Locale) => {
     setLocaleState(next);

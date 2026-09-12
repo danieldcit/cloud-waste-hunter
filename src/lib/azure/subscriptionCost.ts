@@ -47,13 +47,21 @@ export async function getSubscriptionForecast(
     body: JSON.stringify({
       type: "ActualCost",
       timeframe: "MonthToDate",
+      includeActualCost: true,
       dataset: {
-        granularity: "None",
+        granularity: "Daily",
         aggregation: { totalCost: { name: "Cost", function: "Sum" } },
       },
     }),
   });
-  return extractTotalCost(response);
+  const costIndex = response.properties.columns.findIndex((c) => c.name === "Cost");
+  if (costIndex === -1) {
+    return 0;
+  }
+  return response.properties.rows.reduce(
+    (sum, row) => sum + (Number(row[costIndex]) || 0),
+    0,
+  );
 }
 
 export async function getSubscriptionDailyCostTrend(
@@ -81,8 +89,10 @@ export async function getSubscriptionDailyCostTrend(
   if (costIndex === -1 || dateIndex === -1) {
     return [];
   }
-  return response.properties.rows.map((row) => ({
-    date: String(row[dateIndex]),
-    cost: Number(row[costIndex]) || 0,
-  }));
+  return response.properties.rows
+    .map((row) => ({
+      date: String(row[dateIndex]),
+      cost: Number(row[costIndex]) || 0,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }

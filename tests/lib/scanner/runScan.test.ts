@@ -253,6 +253,57 @@ describe("runScan", () => {
     expect(findings[0].ruleType).toBe("IDLE_VM");
   });
 
+  it("does not fail the whole scan when the idle VM rule throws, and still persists other rules' findings", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-vm-2", name: "IdleVmFails" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: {
+        customerId: customer.id,
+        azureSubscriptionId: "sub-vm-2",
+        displayName: "IdleVmFails",
+      },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "disk-vm-2",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-vm-2",
+        properties: { diskState: "Unattached" },
+      },
+      {
+        id: "vm-idle-2",
+        type: "microsoft.compute/virtualmachines",
+        subscriptionId: "sub-vm-2",
+        properties: {},
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(9.99);
+    vi.mocked(getAverageCpuPercent).mockRejectedValue(
+      new Error("Azure Monitor throttled"),
+    );
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const scanRun = await prisma.scanRun.findFirstOrThrow({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(scanRun.status).toBe("SUCCEEDED");
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      ruleType: "ORPHANED_DISK",
+      resourceId: "disk-vm-2",
+    });
+  });
+
   it("persists a CostSnapshot with the captured subscription-level cost data", async () => {
     const customer = await prisma.customer.create({
       data: { entraTenantId: "tenant-cs-1", name: "Acme" },
@@ -277,7 +328,7 @@ describe("runScan", () => {
     expect(snapshots[0].dailyTrend).toEqual([{ date: "2026-09-01", cost: 10 }]);
   });
 
-  it("still succeeds and still persists findings when cost snapshot capture fails", async () => {
+  it("still succeeds, persists findings, and captures a partial CostSnapshot when one of three cost-fetch calls fails", async () => {
     const customer = await prisma.customer.create({
       data: { entraTenantId: "tenant-cs-2", name: "Acme" },
     });
@@ -295,6 +346,10 @@ describe("runScan", () => {
     ]);
     vi.mocked(estimateMonthlyCost).mockResolvedValue(9);
     vi.mocked(getSubscriptionMonthToDateSpend).mockRejectedValue(new Error("rate limited"));
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(500);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([
+      { date: "2026-09-01", cost: 10 },
+    ]);
 
     await runScan(subscription.id);
 
@@ -311,6 +366,38 @@ describe("runScan", () => {
     const snapshots = await prisma.costSnapshot.findMany({
       where: { subscriptionId: subscription.id },
     });
-    expect(snapshots).toHaveLength(0);
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0].monthToDateSpend).toBe(0);
+    expect(snapshots[0].projectedSpend).toBe(500);
+    expect(snapshots[0].dailyTrend).toEqual([{ date: "2026-09-01", cost: 10 }]);
+  });
+
+  it("still creates a CostSnapshot row (with defaults) when all three cost-fetch calls fail, since prisma.costSnapshot.create itself does not throw", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-cs-3", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-cs-3", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([]);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockRejectedValue(new Error("rate limited"));
+    vi.mocked(getSubscriptionForecast).mockRejectedValue(new Error("rate limited"));
+    vi.mocked(getSubscriptionDailyCostTrend).mockRejectedValue(new Error("rate limited"));
+
+    await runScan(subscription.id);
+
+    const scanRun = await prisma.scanRun.findFirstOrThrow({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(scanRun.status).toBe("SUCCEEDED");
+
+    const snapshots = await prisma.costSnapshot.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0].monthToDateSpend).toBe(0);
+    expect(snapshots[0].projectedSpend).toBe(0);
+    expect(snapshots[0].dailyTrend).toEqual([]);
   });
 });

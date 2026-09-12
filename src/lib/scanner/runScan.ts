@@ -32,11 +32,35 @@ async function captureCostSnapshot(
   azureSubscriptionId: string,
 ): Promise<void> {
   try {
-    const [monthToDateSpend, projectedSpend, dailyTrend] = await Promise.all([
+    const [mtdResult, forecastResult, trendResult] = await Promise.allSettled([
       getSubscriptionMonthToDateSpend(azureSubscriptionId),
       getSubscriptionForecast(azureSubscriptionId),
       getSubscriptionDailyCostTrend(azureSubscriptionId),
     ]);
+
+    const monthToDateSpend = mtdResult.status === "fulfilled" ? mtdResult.value : 0;
+    const projectedSpend = forecastResult.status === "fulfilled" ? forecastResult.value : 0;
+    const dailyTrend = trendResult.status === "fulfilled" ? trendResult.value : [];
+
+    if (mtdResult.status === "rejected") {
+      console.error(
+        `Month-to-date spend fetch failed for subscription ${subscriptionRecordId}`,
+        mtdResult.reason,
+      );
+    }
+    if (forecastResult.status === "rejected") {
+      console.error(
+        `Forecast fetch failed for subscription ${subscriptionRecordId}`,
+        forecastResult.reason,
+      );
+    }
+    if (trendResult.status === "rejected") {
+      console.error(
+        `Daily cost trend fetch failed for subscription ${subscriptionRecordId}`,
+        trendResult.reason,
+      );
+    }
+
     await prisma.costSnapshot.create({
       data: {
         subscriptionId: subscriptionRecordId,
@@ -80,12 +104,22 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       });
     }
 
+    let idleVmCandidates: WasteFindingCandidate[] = [];
+    try {
+      idleVmCandidates = await findIdleVirtualMachines(resources);
+    } catch (error) {
+      console.error(
+        "Idle VM rule failed; treating as zero idle VMs for this scan",
+        error,
+      );
+    }
+
     const candidates: WasteFindingCandidate[] = [
       ...findOrphanedDisks(resources),
       ...findUnassociatedPublicIps(resources),
       ...findOldSnapshots(resources),
       ...findIdleVpnGateways(resources),
-      ...(await findIdleVirtualMachines(resources)),
+      ...idleVmCandidates,
     ];
 
     for (const candidate of candidates) {

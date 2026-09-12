@@ -47,7 +47,10 @@ export function AmbientesClient({
 
     const response = await fetch("/api/subscriptions", {
       method: "POST",
-      body: JSON.stringify({ azureSubscriptionId, displayName }),
+      body: JSON.stringify({
+        azureSubscriptionId: azureSubscriptionId.trim(),
+        displayName: displayName.trim(),
+      }),
     });
 
     if (!response.ok) {
