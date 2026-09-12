@@ -202,6 +202,7 @@ export function DashboardClient({
               <th className="p-2">{t("table.resource")}</th>
               <th className="p-2">{t("table.subscription")}</th>
               <th className="p-2">{t("table.impact")}</th>
+              <th className="p-2">{t("table.currentCost")}</th>
               <th className="p-2">{t("table.estimatedSavings")}</th>
               <th className="p-2">{t("table.status")}</th>
               <th className="p-2" />
@@ -229,6 +230,10 @@ export function DashboardClient({
                       {t(`impact.${impact}`)}
                     </span>
                   </td>
+                  {/* Current cost and estimated savings are the same figure here: every
+                      finding is a fully-idle/orphaned resource, so removing it recovers
+                      its entire cost. */}
+                  <td className="p-2">${finding.estimatedMonthlyCost.toFixed(2)}</td>
                   <td className="p-2">${finding.estimatedMonthlyCost.toFixed(2)}</td>
                   <td className="p-2">{finding.status}</td>
                   <td className="p-2">

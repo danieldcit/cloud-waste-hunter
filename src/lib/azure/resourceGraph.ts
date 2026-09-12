@@ -4,6 +4,8 @@ export interface ResourceGraphRow {
   id: string;
   type: string;
   subscriptionId: string;
+  location?: string;
+  sku?: { name?: string; tier?: string } | null;
   properties: Record<string, unknown>;
 }
 

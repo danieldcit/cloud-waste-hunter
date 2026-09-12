@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { queryResourceGraph } from "@/lib/azure/resourceGraph";
+import { queryResourceGraph, type ResourceGraphRow } from "@/lib/azure/resourceGraph";
 import { estimateMonthlyCost } from "@/lib/azure/costManagement";
+import { estimateRetailMonthlyCost } from "@/lib/azure/retailPrices";
 import {
   getSubscriptionMonthToDateSpend,
   getSubscriptionForecast,
@@ -24,7 +25,7 @@ Resources
     'microsoft.network/connections',
     'microsoft.compute/virtualmachines'
   )
-| project id, type, subscriptionId, properties
+| project id, type, subscriptionId, location, sku, properties
 `;
 
 async function captureCostSnapshot(
@@ -92,6 +93,9 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       COMBINED_QUERY,
     );
 
+    await prisma.resource.deleteMany({
+      where: { subscriptionId: subscription.id },
+    });
     if (resources.length > 0) {
       await prisma.resource.createMany({
         data: resources.map((r) => ({
@@ -122,6 +126,10 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       ...idleVmCandidates,
     ];
 
+    const resourceById = new Map<string, ResourceGraphRow>(
+      resources.map((r) => [r.id, r]),
+    );
+
     for (const candidate of candidates) {
       let estimatedMonthlyCost = 0;
       try {
@@ -131,9 +139,23 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         );
       } catch (error) {
         console.error(
-          `Cost estimation failed for resource ${candidate.resourceId} (rule ${candidate.ruleType}); using 0`,
+          `Cost estimation failed for resource ${candidate.resourceId} (rule ${candidate.ruleType}); falling back to retail price estimate`,
           error,
         );
+      }
+
+      if (estimatedMonthlyCost === 0) {
+        const resource = resourceById.get(candidate.resourceId);
+        if (resource) {
+          try {
+            estimatedMonthlyCost = await estimateRetailMonthlyCost(resource);
+          } catch (error) {
+            console.error(
+              `Retail price fallback failed for resource ${candidate.resourceId} (rule ${candidate.ruleType}); using 0`,
+              error,
+            );
+          }
+        }
       }
       await prisma.wasteFinding.upsert({
         where: {
