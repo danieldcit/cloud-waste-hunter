@@ -7,5 +7,6 @@ export async function resetDb(): Promise<void> {
   await prisma.scanRun.deleteMany();
   await prisma.subscription.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.customer.updateMany({ data: { operatorCustomerId: null } });
   await prisma.customer.deleteMany();
 }

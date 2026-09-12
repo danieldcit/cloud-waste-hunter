@@ -8,12 +8,15 @@ datasource db {
 }
 
 model Customer {
-  id            String         @id @default(cuid())
-  entraTenantId String         @unique
-  name          String
-  createdAt     DateTime       @default(now())
-  users         User[]
-  subscriptions Subscription[]
+  id                 String         @id @default(cuid())
+  entraTenantId      String         @unique
+  name               String
+  createdAt          DateTime       @default(now())
+  operatorCustomerId String?
+  operator           Customer?      @relation("OperatorClients", fields: [operatorCustomerId], references: [id])
+  managedClients     Customer[]     @relation("OperatorClients")
+  users              User[]
+  subscriptions      Subscription[]
 }
 
 model User {
