@@ -84,6 +84,15 @@ enum WasteRuleType {
   OLD_SNAPSHOT
   IDLE_VPN_GATEWAY
   IDLE_VM
+  VM_MISSING_HYBRID_BENEFIT
+  VM_MISSING_LINUX_BYOL
+  VM_OUTDATED_SKU_GENERATION
+  VM_STOPPED_RETAINING_RESOURCES
+}
+
+enum SavingsCategory {
+  HARD_SAVING
+  POTENTIAL_SAVING
 }
 
 enum FindingStatus {
@@ -92,14 +101,17 @@ enum FindingStatus {
 }
 
 model WasteFinding {
-  id                   String        @id @default(cuid())
+  id                   String           @id @default(cuid())
   subscriptionId       String
-  subscription         Subscription  @relation(fields: [subscriptionId], references: [id])
+  subscription         Subscription     @relation(fields: [subscriptionId], references: [id])
   ruleType             WasteRuleType
   resourceId           String
   estimatedMonthlyCost Float
-  detectedAt           DateTime      @default(now())
-  status               FindingStatus @default(OPEN)
+  detectedAt           DateTime         @default(now())
+  status               FindingStatus    @default(OPEN)
+  savingsCategory      SavingsCategory?
+  metricObserved       Float?
+  periodAnalyzedDays   Int?
 
   @@unique([subscriptionId, resourceId, ruleType])
 }
