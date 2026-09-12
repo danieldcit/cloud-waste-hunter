@@ -96,6 +96,88 @@ async function estimateVmCost(resource: ResourceGraphRow): Promise<number> {
   return monthlyPriceFromItems(items);
 }
 
+async function estimateWindowsVmCost(resource: ResourceGraphRow): Promise<number> {
+  const region = resource.location ?? "eastus";
+  const hardwareProfile = resource.properties.hardwareProfile as { vmSize?: string } | undefined;
+  const vmSize = hardwareProfile?.vmSize;
+  if (!vmSize) return 0;
+  const skuName = vmSize.replace(/^Standard_/, "");
+
+  const items = await queryRetailPrices(
+    `serviceName eq 'Virtual Machines' and armRegionName eq '${escapeODataString(region)}' and skuName eq '${escapeODataString(skuName)}' and contains(productName, 'Windows')`,
+  );
+  return monthlyPriceFromItems(items);
+}
+
+async function estimateLinuxDistroVmCost(
+  resource: ResourceGraphRow,
+  distroProductNameFragment: string,
+): Promise<number> {
+  const region = resource.location ?? "eastus";
+  const hardwareProfile = resource.properties.hardwareProfile as { vmSize?: string } | undefined;
+  const vmSize = hardwareProfile?.vmSize;
+  if (!vmSize) return 0;
+  const skuName = vmSize.replace(/^Standard_/, "");
+
+  const items = await queryRetailPrices(
+    `serviceName eq 'Virtual Machines' and armRegionName eq '${escapeODataString(region)}' and skuName eq '${escapeODataString(skuName)}' and contains(productName, '${escapeODataString(distroProductNameFragment)}')`,
+  );
+  return monthlyPriceFromItems(items);
+}
+
+/** Used only when retail pricing data for the license delta itself is unavailable. */
+const HYBRID_BENEFIT_FALLBACK_FRACTION = 0.4;
+const LINUX_BYOL_FALLBACK_FRACTION = 0.25;
+
+/**
+ * Estimated monthly saving from applying Azure Hybrid Benefit to a Windows VM:
+ * the delta between the Windows-licensed and Linux (license-free) retail price
+ * for the same SKU/region — Hybrid Benefit removes the Windows Server license
+ * fee, leaving the base compute rate, which is the Linux price. Falls back to
+ * a documented ~40% approximation (Microsoft's commonly cited Hybrid Benefit
+ * saving on Windows Server compute) when either side's retail price can't be
+ * found.
+ */
+export async function estimateHybridBenefitMonthlySavings(
+  resource: ResourceGraphRow,
+): Promise<number> {
+  const linuxPrice = await estimateVmCost(resource).catch(() => 0);
+  try {
+    const windowsPrice = await estimateWindowsVmCost(resource);
+    if (windowsPrice > 0 && linuxPrice > 0 && windowsPrice > linuxPrice) {
+      return windowsPrice - linuxPrice;
+    }
+  } catch (error) {
+    console.error(`Hybrid Benefit savings estimation failed for ${resource.id}`, error);
+  }
+  return linuxPrice * HYBRID_BENEFIT_FALLBACK_FRACTION;
+}
+
+/**
+ * Estimated monthly saving from bringing your own RHEL/SUSE subscription
+ * (BYOL) instead of paying Azure's pay-as-you-go distro price: the delta
+ * between the distro-specific PAYG retail price and the base Linux
+ * (license-free) retail price for the same SKU/region. Falls back to a
+ * documented ~25% approximation (typical RHEL/SUSE subscription premium)
+ * when either side's retail price can't be found.
+ */
+export async function estimateLinuxByolMonthlySavings(
+  resource: ResourceGraphRow,
+  publisher: string,
+): Promise<number> {
+  const baseLinuxPrice = await estimateVmCost(resource).catch(() => 0);
+  try {
+    const distroFragment = publisher.toLowerCase() === "suse" ? "SUSE" : "Red Hat";
+    const distroPrice = await estimateLinuxDistroVmCost(resource, distroFragment);
+    if (distroPrice > 0 && baseLinuxPrice > 0 && distroPrice > baseLinuxPrice) {
+      return distroPrice - baseLinuxPrice;
+    }
+  } catch (error) {
+    console.error(`Linux BYOL savings estimation failed for ${resource.id}`, error);
+  }
+  return baseLinuxPrice * LINUX_BYOL_FALLBACK_FRACTION;
+}
+
 async function estimateVpnGatewayCost(resource: ResourceGraphRow): Promise<number> {
   const region = resource.location ?? "eastus";
   const properties = resource.properties as { sku?: { name?: string } } | undefined;

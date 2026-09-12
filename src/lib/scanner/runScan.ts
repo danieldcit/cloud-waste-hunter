@@ -16,6 +16,7 @@ import { findMissingHybridBenefit } from "@/lib/waste-rules/missingHybridBenefit
 import { findMissingLinuxByol } from "@/lib/waste-rules/missingLinuxByol";
 import { findOutdatedVmSkus } from "@/lib/waste-rules/outdatedVmSku";
 import { findStoppedVmsRetainingResources } from "@/lib/waste-rules/stoppedVmRetainingResources";
+import { estimateMonthlySavings } from "@/lib/waste-rules/savingsEstimate";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
 
 const COMBINED_QUERY = `
@@ -166,6 +167,20 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           }
         }
       }
+      let estimatedMonthlySavings: number | null = null;
+      try {
+        estimatedMonthlySavings = await estimateMonthlySavings(
+          candidate,
+          resourceById.get(candidate.resourceId),
+          estimatedMonthlyCost,
+        );
+      } catch (error) {
+        console.error(
+          `Savings estimation failed for resource ${candidate.resourceId} (rule ${candidate.ruleType}); leaving savings unknown`,
+          error,
+        );
+      }
+
       await prisma.wasteFinding.upsert({
         where: {
           subscriptionId_resourceId_ruleType: {
@@ -179,12 +194,14 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           resourceId: candidate.resourceId,
           ruleType: candidate.ruleType,
           estimatedMonthlyCost,
+          estimatedMonthlySavings,
           savingsCategory: candidate.savingsCategory,
           metricObserved: candidate.metricObserved,
           periodAnalyzedDays: candidate.periodAnalyzedDays,
         },
         update: {
           estimatedMonthlyCost,
+          estimatedMonthlySavings,
           savingsCategory: candidate.savingsCategory,
           metricObserved: candidate.metricObserved,
           periodAnalyzedDays: candidate.periodAnalyzedDays,

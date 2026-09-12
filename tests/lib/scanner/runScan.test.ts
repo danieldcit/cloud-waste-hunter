@@ -18,12 +18,18 @@ vi.mock("@/lib/azure/subscriptionCost", () => ({
 }));
 vi.mock("@/lib/azure/retailPrices", () => ({
   estimateRetailMonthlyCost: vi.fn(),
+  estimateHybridBenefitMonthlySavings: vi.fn(),
+  estimateLinuxByolMonthlySavings: vi.fn(),
 }));
 
 import { queryResourceGraph } from "@/lib/azure/resourceGraph";
 import { estimateMonthlyCost } from "@/lib/azure/costManagement";
 import { getAverageCpuPercent } from "@/lib/azure/monitorMetrics";
-import { estimateRetailMonthlyCost } from "@/lib/azure/retailPrices";
+import {
+  estimateRetailMonthlyCost,
+  estimateHybridBenefitMonthlySavings,
+  estimateLinuxByolMonthlySavings,
+} from "@/lib/azure/retailPrices";
 import {
   getSubscriptionMonthToDateSpend,
   getSubscriptionForecast,
@@ -440,7 +446,7 @@ describe("runScan", () => {
     expect(snapshots[0].dailyTrend).toEqual([]);
   });
 
-  it("persists a VM_MISSING_HYBRID_BENEFIT finding with HARD_SAVING classification", async () => {
+  it("persists a VM_MISSING_HYBRID_BENEFIT finding with POTENTIAL_SAVING classification and a computed savings delta", async () => {
     const customer = await prisma.customer.create({
       data: { entraTenantId: "tenant-hb-1", name: "Acme" },
     });
@@ -458,6 +464,7 @@ describe("runScan", () => {
     ]);
     vi.mocked(estimateMonthlyCost).mockResolvedValue(50);
     vi.mocked(getAverageCpuPercent).mockResolvedValue(50);
+    vi.mocked(estimateHybridBenefitMonthlySavings).mockResolvedValue(20);
     vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
     vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
     vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
@@ -471,7 +478,44 @@ describe("runScan", () => {
     expect(findings[0]).toMatchObject({
       ruleType: "VM_MISSING_HYBRID_BENEFIT",
       resourceId: "vm-hb-1",
-      savingsCategory: "HARD_SAVING",
+      savingsCategory: "POTENTIAL_SAVING",
+      estimatedMonthlyCost: 50,
+      estimatedMonthlySavings: 20,
+    });
+  });
+
+  it("persists a null estimatedMonthlySavings for VM_OUTDATED_SKU_GENERATION, since the saving can't be estimated yet", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-sku-1", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-sku-1", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vm-sku-1",
+        type: "microsoft.compute/virtualmachines",
+        subscriptionId: "sub-sku-1",
+        properties: { hardwareProfile: { vmSize: "Standard_A2" } },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(30);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(50);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      ruleType: "VM_OUTDATED_SKU_GENERATION",
+      estimatedMonthlyCost: 30,
+      estimatedMonthlySavings: null,
     });
   });
 

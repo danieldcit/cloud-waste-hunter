@@ -25,6 +25,6 @@ export function findMissingLinuxByol(
       ruleType: "VM_MISSING_LINUX_BYOL",
       resourceId: r.id,
       subscriptionId: r.subscriptionId,
-      savingsCategory: "HARD_SAVING",
+      savingsCategory: "POTENTIAL_SAVING",
     }));
 }

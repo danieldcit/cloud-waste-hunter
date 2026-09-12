@@ -24,6 +24,6 @@ export function findMissingHybridBenefit(
       ruleType: "VM_MISSING_HYBRID_BENEFIT",
       resourceId: r.id,
       subscriptionId: r.subscriptionId,
-      savingsCategory: "HARD_SAVING",
+      savingsCategory: "POTENTIAL_SAVING",
     }));
 }

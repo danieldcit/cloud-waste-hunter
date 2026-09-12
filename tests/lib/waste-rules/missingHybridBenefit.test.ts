@@ -23,7 +23,7 @@ describe("findMissingHybridBenefit", () => {
         ruleType: "VM_MISSING_HYBRID_BENEFIT",
         resourceId: vm.id,
         subscriptionId: "sub-1",
-        savingsCategory: "HARD_SAVING",
+        savingsCategory: "POTENTIAL_SAVING",
       },
     ]);
   });

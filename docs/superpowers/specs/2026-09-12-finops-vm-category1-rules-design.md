@@ -161,3 +161,27 @@ diferentemente quando o teste precisar simular severidades distintas.
 
 Uma migration Prisma para os 3 campos novos em `WasteFinding` + os novos valores de
 `WasteRuleType`. Nenhum dado existente precisa de backfill (campos novos são opcionais).
+
+## 7. Adendo (2026-09-12) — separação entre custo e economia real
+
+A revisão final de branch da v1 encontrou dois problemas estruturais na classificação
+original, corrigidos antes de avançar para a Categoria 2:
+
+- **`VM_MISSING_HYBRID_BENEFIT` e `VM_MISSING_LINUX_BYOL` reclassificadas de `HARD_SAVING`
+  para `POTENTIAL_SAVING`.** Ambas pressupõem que o cliente já possui a licença/assinatura
+  subjacente (Software Assurance para Hybrid Benefit, assinatura RHEL/SUSE para BYOL) — algo
+  que o scanner não tem como verificar via Resource Graph. `HARD_SAVING` fica reservado para
+  achados sem pré-requisito externo (disco órfão, IP solto, snapshot antigo, VPN ociosa, VM
+  ociosa, VM parada mantendo disco).
+- **Novo campo `estimatedMonthlySavings` em `WasteFinding`** (nullable), separado de
+  `estimatedMonthlyCost`. Para regras "deletar" (as 6 `HARD_SAVING` acima), a economia é o
+  custo inteiro do recurso. Para `VM_MISSING_HYBRID_BENEFIT`/`VM_MISSING_LINUX_BYOL`, a
+  economia é o delta de preço de varejo entre a SKU com e sem a licença
+  (`estimateHybridBenefitMonthlySavings`/`estimateLinuxByolMonthlySavings` em
+  `src/lib/azure/retailPrices.ts`), com fallback documentado (~40%/~25% do custo) quando o
+  preço de varejo de um dos dois lados não é encontrado. Para `VM_OUTDATED_SKU_GENERATION` o
+  valor fica `null` — não há como estimar a economia sem saber a SKU de destino recomendada, e
+  é mais honesto não estimar do que inventar um número.
+- **`computeDashboardSummary`** agora soma `estimatedMonthlySavings` (deduplicado por
+  `resourceId`, usando o máximo) em vez de `estimatedMonthlyCost` — isso também corrigiu um bug
+  de contagem dupla/tripla quando um mesmo recurso gera múltiplos achados.

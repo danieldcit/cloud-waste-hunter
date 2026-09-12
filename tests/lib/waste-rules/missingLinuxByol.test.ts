@@ -23,7 +23,7 @@ describe("findMissingLinuxByol", () => {
         ruleType: "VM_MISSING_LINUX_BYOL",
         resourceId: vm.id,
         subscriptionId: "sub-1",
-        savingsCategory: "HARD_SAVING",
+        savingsCategory: "POTENTIAL_SAVING",
       },
     ]);
   });
@@ -36,7 +36,7 @@ describe("findMissingLinuxByol", () => {
         ruleType: "VM_MISSING_LINUX_BYOL",
         resourceId: vm.id,
         subscriptionId: "sub-1",
-        savingsCategory: "HARD_SAVING",
+        savingsCategory: "POTENTIAL_SAVING",
       },
     ]);
   });

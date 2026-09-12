@@ -112,6 +112,7 @@ model WasteFinding {
   savingsCategory      SavingsCategory?
   metricObserved       Float?
   periodAnalyzedDays   Int?
+  estimatedMonthlySavings Float?
 
   @@unique([subscriptionId, resourceId, ruleType])
 }
