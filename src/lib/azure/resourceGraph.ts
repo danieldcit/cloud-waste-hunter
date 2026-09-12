@@ -7,6 +7,7 @@ export interface ResourceGraphRow {
   location?: string;
   sku?: { name?: string; tier?: string } | null;
   properties: Record<string, unknown>;
+  powerState?: string;
 }
 
 interface ResourceGraphResponse {
