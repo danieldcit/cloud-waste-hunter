@@ -40,6 +40,7 @@ export function AmbientesClient({
   const [managedClients, setManagedClients] = useState(initialManagedClients);
   const [newClientName, setNewClientName] = useState("");
   const [clientFormError, setClientFormError] = useState<string | null>(null);
+  const [clientAddedMessage, setClientAddedMessage] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
   const [azureSubscriptionId, setAzureSubscriptionId] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -137,6 +138,7 @@ export function AmbientesClient({
 
   async function handleAddClient(event: React.FormEvent) {
     event.preventDefault();
+    setClientAddedMessage(null);
     const trimmed = newClientName.trim();
     if (!trimmed) {
       setClientFormError(t("ambientes.clientNameRequired"));
@@ -149,6 +151,7 @@ export function AmbientesClient({
         [...current, created].sort((a, b) => a.name.localeCompare(b.name)),
       );
       setNewClientName("");
+      setClientAddedMessage(created.name);
     } catch {
       setClientFormError(t("ambientes.addClientFailed"));
     }
@@ -187,6 +190,11 @@ export function AmbientesClient({
             {t("ambientes.addClient")}
           </button>
           {clientFormError && <p className="text-red-600 text-sm">{clientFormError}</p>}
+          {clientAddedMessage && (
+            <p className="text-green-600 text-sm">
+              {t("ambientes.clientAdded")}: {clientAddedMessage}
+            </p>
+          )}
         </form>
       </section>
 
