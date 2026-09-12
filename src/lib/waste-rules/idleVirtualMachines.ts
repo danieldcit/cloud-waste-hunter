@@ -21,15 +21,23 @@ export async function findIdleVirtualMachines(
   getAverageCpu: (resourceId: string, days: number) => Promise<number> = getAverageCpuPercent,
 ): Promise<WasteFindingCandidate[]> {
   const vms = resources.filter(
-    (r) => r.type.toLowerCase() === "microsoft.compute/virtualmachines",
+    (r) =>
+      r.type.toLowerCase() === "microsoft.compute/virtualmachines" &&
+      r.powerState !== "PowerState/deallocated",
   );
 
   const candidates: WasteFindingCandidate[] = [];
   for (const vm of vms) {
-    const cpuByWindow = new Map<number, number>();
-    for (const days of [30, 60, 90]) {
-      cpuByWindow.set(days, await getAverageCpu(vm.id, days));
-    }
+    const [cpu30, cpu60, cpu90] = await Promise.all([
+      getAverageCpu(vm.id, 30),
+      getAverageCpu(vm.id, 60),
+      getAverageCpu(vm.id, 90),
+    ]);
+    const cpuByWindow = new Map<number, number>([
+      [30, cpu30],
+      [60, cpu60],
+      [90, cpu90],
+    ]);
 
     const matchedTier = CPU_SEVERITY_TIERS.find(
       (tier) => (cpuByWindow.get(tier.days) ?? Infinity) < tier.maxCpuPercent,

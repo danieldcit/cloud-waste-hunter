@@ -34,6 +34,12 @@ describe("findMissingHybridBenefit", () => {
     expect(findMissingHybridBenefit([vm])).toEqual([]);
   });
 
+  it("does not flag a Windows VM whose licenseType has different casing than expected", () => {
+    const vm = windowsVm("/subscriptions/sub-1/vm-win-lowercase-license", "windows_server");
+
+    expect(findMissingHybridBenefit([vm])).toEqual([]);
+  });
+
   it("does not flag a Linux VM", () => {
     const vm: ResourceGraphRow = {
       id: "/subscriptions/sub-1/vm-linux",

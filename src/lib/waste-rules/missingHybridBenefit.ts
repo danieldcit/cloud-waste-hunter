@@ -1,7 +1,7 @@
 import type { ResourceGraphRow } from "@/lib/azure/resourceGraph";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
 
-const HYBRID_BENEFIT_LICENSE_TYPES = new Set(["Windows_Server", "Windows_Client"]);
+const HYBRID_BENEFIT_LICENSE_TYPES = new Set(["windows_server", "windows_client"]);
 
 export function findMissingHybridBenefit(
   resources: ResourceGraphRow[],
@@ -18,7 +18,7 @@ export function findMissingHybridBenefit(
         return false;
       }
       const licenseType = r.properties.licenseType as string | undefined;
-      return !licenseType || !HYBRID_BENEFIT_LICENSE_TYPES.has(licenseType);
+      return !licenseType || !HYBRID_BENEFIT_LICENSE_TYPES.has(licenseType.toLowerCase());
     })
     .map((r) => ({
       ruleType: "VM_MISSING_HYBRID_BENEFIT",

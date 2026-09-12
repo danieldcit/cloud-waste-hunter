@@ -99,6 +99,22 @@ describe("findIdleVirtualMachines", () => {
     expect(result).toEqual([]);
   });
 
+  it("excludes a deallocated VM even when its reported CPU is below every threshold", async () => {
+    const vm: ResourceGraphRow = {
+      id: "/subscriptions/sub-1/vm-deallocated",
+      type: "microsoft.compute/virtualmachines",
+      subscriptionId: "sub-1",
+      powerState: "PowerState/deallocated",
+      properties: {},
+    };
+    const getAverageCpu = vi.fn().mockResolvedValue(0);
+
+    const result = await findIdleVirtualMachines([vm], getAverageCpu);
+
+    expect(result).toEqual([]);
+    expect(getAverageCpu).not.toHaveBeenCalled();
+  });
+
   it("never calls the CPU fetcher for a non-VM resource", async () => {
     const disk: ResourceGraphRow = {
       id: "disk-1",
