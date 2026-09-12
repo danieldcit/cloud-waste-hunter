@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { isValidSubscriptionId } from "@/lib/ambientes/validateSubscriptionId";
-import { addManagedClient } from "@/app/ambientes/actions";
+import { addManagedClientWithSubscription } from "@/app/ambientes/actions";
 import { ClientSwitcher } from "@/components/ClientSwitcher";
 
 interface AmbienteRow {
@@ -44,53 +44,12 @@ export function AmbientesClient({
   const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
   const [azureSubscriptionId, setAzureSubscriptionId] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
   const [connectLinkBySubscription, setConnectLinkBySubscription] = useState<
     Record<string, ConnectLinkInfo>
   >({});
   const [verifyMessageBySubscription, setVerifyMessageBySubscription] = useState<
     Record<string, string>
   >({});
-
-  async function handleAddEnvironment(event: React.FormEvent) {
-    event.preventDefault();
-    if (!isValidSubscriptionId(azureSubscriptionId)) {
-      setFormError("ID de subscription inválido");
-      return;
-    }
-    if (!displayName.trim()) {
-      setFormError("Nome é obrigatório");
-      return;
-    }
-    setFormError(null);
-
-    const response = await fetch("/api/subscriptions", {
-      method: "POST",
-      body: JSON.stringify({
-        azureSubscriptionId: azureSubscriptionId.trim(),
-        displayName: displayName.trim(),
-      }),
-    });
-
-    if (!response.ok) {
-      setFormError("Não foi possível adicionar este ambiente");
-      return;
-    }
-
-    const created = await response.json();
-    setSubscriptions((current) => [
-      {
-        id: created.id,
-        azureSubscriptionId: created.azureSubscriptionId,
-        displayName: created.displayName,
-        status: created.status,
-        lastScanAt: null,
-      },
-      ...current,
-    ]);
-    setAzureSubscriptionId("");
-    setDisplayName("");
-  }
 
   async function handleShowDeployLink(subscriptionRowId: string) {
     const response = await fetch("/api/subscriptions/connect-link");
@@ -136,22 +95,36 @@ export function AmbientesClient({
     });
   }
 
-  async function handleAddClient(event: React.FormEvent) {
+  async function handleAddClientWithSubscription(event: React.FormEvent) {
     event.preventDefault();
     setClientAddedMessage(null);
-    const trimmed = newClientName.trim();
-    if (!trimmed) {
+    const trimmedName = newClientName.trim();
+    if (!trimmedName) {
       setClientFormError(t("ambientes.clientNameRequired"));
+      return;
+    }
+    if (!isValidSubscriptionId(azureSubscriptionId)) {
+      setClientFormError("ID de subscription inválido");
+      return;
+    }
+    if (!displayName.trim()) {
+      setClientFormError("Nome é obrigatório");
       return;
     }
     setClientFormError(null);
     try {
-      const created = await addManagedClient(trimmed);
+      const created = await addManagedClientWithSubscription(
+        trimmedName,
+        azureSubscriptionId,
+        displayName,
+      );
       setManagedClients((current) =>
-        [...current, created].sort((a, b) => a.name.localeCompare(b.name)),
+        [...current, created.client].sort((a, b) => a.name.localeCompare(b.name)),
       );
       setNewClientName("");
-      setClientAddedMessage(created.name);
+      setAzureSubscriptionId("");
+      setDisplayName("");
+      setClientAddedMessage(created.client.name);
     } catch {
       setClientFormError(t("ambientes.addClientFailed"));
     }
@@ -169,38 +142,23 @@ export function AmbientesClient({
         />
       </header>
 
-      <section className="mb-8">
-        <h2 className="mb-2 text-lg font-semibold">{t("ambientes.clientsHeading")}</h2>
-        <form onSubmit={handleAddClient} className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className="block text-sm mb-1" htmlFor="clientName">
-              {t("ambientes.clientName")}
-            </label>
-            <input
-              id="clientName"
-              className="border rounded px-3 py-2"
-              value={newClientName}
-              onChange={(e) => setNewClientName(e.target.value)}
-            />
-          </div>
-          <button
-            type="submit"
-            className="bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700"
-          >
-            {t("ambientes.addClient")}
-          </button>
-          {clientFormError && <p className="text-red-600 text-sm">{clientFormError}</p>}
-          {clientAddedMessage && (
-            <p className="text-green-600 text-sm">
-              {t("ambientes.clientAdded")}: {clientAddedMessage}
-            </p>
-          )}
-        </form>
-      </section>
-
       <h1 className="text-2xl font-bold mb-4">{t("ambientes.title")}</h1>
 
-      <form onSubmit={handleAddEnvironment} className="mb-8 flex flex-wrap items-end gap-3">
+      <form
+        onSubmit={handleAddClientWithSubscription}
+        className="mb-8 flex flex-wrap items-end gap-3"
+      >
+        <div>
+          <label className="block text-sm mb-1" htmlFor="clientName">
+            {t("ambientes.clientName")}
+          </label>
+          <input
+            id="clientName"
+            className="border rounded px-3 py-2"
+            value={newClientName}
+            onChange={(e) => setNewClientName(e.target.value)}
+          />
+        </div>
         <div>
           <label className="block text-sm mb-1" htmlFor="azureSubscriptionId">
             {t("ambientes.subscriptionId")}
@@ -227,9 +185,14 @@ export function AmbientesClient({
           type="submit"
           className="bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700"
         >
-          {t("ambientes.submit")}
+          {t("ambientes.addClient")}
         </button>
-        {formError && <p className="text-red-600 text-sm">{formError}</p>}
+        {clientFormError && <p className="text-red-600 text-sm">{clientFormError}</p>}
+        {clientAddedMessage && (
+          <p className="text-green-600 text-sm">
+            {t("ambientes.clientAdded")}: {clientAddedMessage}
+          </p>
+        )}
       </form>
 
       <ul className="space-y-4">

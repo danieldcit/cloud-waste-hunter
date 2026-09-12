@@ -22,6 +22,7 @@ export default async function AmbientesPage() {
 
   return (
     <AmbientesClient
+      key={customerId}
       operatorCustomerId={operatorCustomerId}
       operatorLabel={session?.user?.name ?? session?.user?.email ?? ""}
       activeClientId={customerId}

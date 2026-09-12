@@ -87,6 +87,43 @@ describe("POST /api/subscriptions/:id/verify", () => {
     expect(runScan).not.toHaveBeenCalled();
   });
 
+  it("connects a managed client's subscription even though its placeholder entraTenantId never matches the real Azure tenantId", async () => {
+    const operator = await prisma.customer.create({
+      data: { entraTenantId: "tenant-operator", name: "Operator" },
+    });
+    const managedClient = await prisma.customer.create({
+      data: {
+        entraTenantId: `managed:${crypto.randomUUID()}`,
+        name: "Managed Client",
+        operatorCustomerId: operator.id,
+      },
+    });
+    const subscription = await prisma.subscription.create({
+      data: {
+        customerId: managedClient.id,
+        azureSubscriptionId: "sub-managed",
+        displayName: "Managed Sub",
+      },
+    });
+
+    vi.mocked(requireCustomerId).mockResolvedValue(managedClient.id);
+    vi.mocked(armFetch).mockImplementation(async (url: string) => {
+      if (url.includes("registrationAssignments")) {
+        return { value: [{ id: "assignment-1" }] };
+      }
+      return { tenantId: "real-azure-tenant-guid" };
+    });
+
+    const response = await POST(new Request("http://localhost"), {
+      params: Promise.resolve({ id: subscription.id }),
+    });
+
+    expect(response.status).toBe(200);
+    const updated = await prisma.subscription.findUniqueOrThrow({ where: { id: subscription.id } });
+    expect(updated.status).toBe("CONNECTED");
+    expect(runScan).toHaveBeenCalledWith(subscription.id);
+  });
+
   it("returns 404 for a subscription belonging to another customer", async () => {
     const customerA = await prisma.customer.create({
       data: { entraTenantId: "tenant-a", name: "A" },

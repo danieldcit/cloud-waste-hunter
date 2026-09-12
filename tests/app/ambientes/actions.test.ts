@@ -17,7 +17,7 @@ vi.mock("next/headers", () => ({ cookies: vi.fn() }));
 
 import { getOperatorCustomerId } from "@/lib/tenant";
 import { cookies } from "next/headers";
-import { addManagedClient, setActiveClient } from "@/app/ambientes/actions";
+import { addManagedClient, addManagedClientWithSubscription, setActiveClient } from "@/app/ambientes/actions";
 
 function fakeCookieStore() {
   const store = new Map<string, string>();
@@ -54,6 +54,56 @@ describe("addManagedClient", () => {
     vi.mocked(getOperatorCustomerId).mockResolvedValue(operator.id);
 
     await expect(addManagedClient("   ")).rejects.toThrow();
+  });
+});
+
+describe("addManagedClientWithSubscription", () => {
+  beforeEach(resetDb);
+
+  it("creates a customer and a subscription scoped to it", async () => {
+    const operator = await prisma.customer.create({
+      data: { entraTenantId: "tenant-op5", name: "Operator" },
+    });
+    vi.mocked(getOperatorCustomerId).mockResolvedValue(operator.id);
+
+    const result = await addManagedClientWithSubscription(
+      "Acme Corp",
+      "11111111-1111-1111-1111-111111111111",
+      "Acme Production",
+    );
+
+    const createdClient = await prisma.customer.findUniqueOrThrow({
+      where: { id: result.client.id },
+    });
+    expect(createdClient.name).toBe("Acme Corp");
+    expect(createdClient.operatorCustomerId).toBe(operator.id);
+
+    const createdSubscription = await prisma.subscription.findUniqueOrThrow({
+      where: { id: result.subscriptionId },
+    });
+    expect(createdSubscription.customerId).toBe(result.client.id);
+    expect(createdSubscription.azureSubscriptionId).toBe(
+      "11111111-1111-1111-1111-111111111111",
+    );
+    expect(createdSubscription.displayName).toBe("Acme Production");
+  });
+
+  it("rejects an invalid azureSubscriptionId and creates no rows", async () => {
+    const operator = await prisma.customer.create({
+      data: { entraTenantId: "tenant-op6", name: "Operator" },
+    });
+    vi.mocked(getOperatorCustomerId).mockResolvedValue(operator.id);
+
+    await expect(
+      addManagedClientWithSubscription("Acme Corp", "not-a-guid", "Acme Production"),
+    ).rejects.toThrow();
+
+    const customers = await prisma.customer.findMany({
+      where: { operatorCustomerId: operator.id },
+    });
+    expect(customers).toHaveLength(0);
+    const subscriptions = await prisma.subscription.findMany();
+    expect(subscriptions).toHaveLength(0);
   });
 });
 

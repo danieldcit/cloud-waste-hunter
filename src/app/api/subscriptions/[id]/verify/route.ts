@@ -42,11 +42,13 @@ export async function POST(
     subscriptionDetailsUrl,
   );
 
-  if (subscriptionDetails.tenantId !== customer.entraTenantId) {
-    return NextResponse.json(
-      { error: "Subscription tenant does not match your account" },
-      { status: 403 },
-    );
+  if (customer.operatorCustomerId === null) {
+    if (subscriptionDetails.tenantId !== customer.entraTenantId) {
+      return NextResponse.json(
+        { error: "Subscription tenant does not match your account" },
+        { status: 403 },
+      );
+    }
   }
 
   const updated = await prisma.subscription.update({

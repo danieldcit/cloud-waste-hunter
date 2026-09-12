@@ -34,6 +34,7 @@ export default async function DashboardPage() {
 
   return (
     <DashboardClient
+      key={customerId}
       userLabel={session?.user?.name ?? session?.user?.email ?? ""}
       operatorCustomerId={operatorCustomerId}
       activeClientId={customerId}
