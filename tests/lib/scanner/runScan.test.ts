@@ -439,4 +439,114 @@ describe("runScan", () => {
     expect(snapshots[0].projectedSpend).toBe(0);
     expect(snapshots[0].dailyTrend).toEqual([]);
   });
+
+  it("persists a VM_MISSING_HYBRID_BENEFIT finding with HARD_SAVING classification", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-hb-1", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-hb-1", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vm-hb-1",
+        type: "microsoft.compute/virtualmachines",
+        subscriptionId: "sub-hb-1",
+        properties: { storageProfile: { osDisk: { osType: "Windows" } } },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(50);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(50);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      ruleType: "VM_MISSING_HYBRID_BENEFIT",
+      resourceId: "vm-hb-1",
+      savingsCategory: "HARD_SAVING",
+    });
+  });
+
+  it("persists a VM_STOPPED_RETAINING_RESOURCES finding for the disk of a deallocated VM", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-stopped-1", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-stopped-1", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vm-stopped-1",
+        type: "microsoft.compute/virtualmachines",
+        subscriptionId: "sub-stopped-1",
+        powerState: "PowerState/deallocated",
+        properties: {
+          storageProfile: {
+            osDisk: { managedDisk: { id: "disk-stopped-1" } },
+          },
+        },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(5);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      ruleType: "VM_STOPPED_RETAINING_RESOURCES",
+      resourceId: "disk-stopped-1",
+      savingsCategory: "POTENTIAL_SAVING",
+    });
+  });
+
+  it("persists the CPU severity metadata on an IDLE_VM finding", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-metric-1", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-metric-1", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vm-metric-1",
+        type: "microsoft.compute/virtualmachines",
+        subscriptionId: "sub-metric-1",
+        properties: {},
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(15);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(2);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      ruleType: "IDLE_VM",
+      savingsCategory: "HARD_SAVING",
+      metricObserved: 2,
+      periodAnalyzedDays: 90,
+    });
+  });
 });

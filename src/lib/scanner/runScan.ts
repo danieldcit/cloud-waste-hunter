@@ -12,6 +12,10 @@ import { findUnassociatedPublicIps } from "@/lib/waste-rules/unassociatedPublicI
 import { findOldSnapshots } from "@/lib/waste-rules/oldSnapshots";
 import { findIdleVpnGateways } from "@/lib/waste-rules/idleVpnGateways";
 import { findIdleVirtualMachines } from "@/lib/waste-rules/idleVirtualMachines";
+import { findMissingHybridBenefit } from "@/lib/waste-rules/missingHybridBenefit";
+import { findMissingLinuxByol } from "@/lib/waste-rules/missingLinuxByol";
+import { findOutdatedVmSkus } from "@/lib/waste-rules/outdatedVmSku";
+import { findStoppedVmsRetainingResources } from "@/lib/waste-rules/stoppedVmRetainingResources";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
 
 const COMBINED_QUERY = `
@@ -25,7 +29,8 @@ Resources
     'microsoft.network/connections',
     'microsoft.compute/virtualmachines'
   )
-| project id, type, subscriptionId, location, sku, properties
+| extend powerState = tostring(properties.extended.instanceView.powerState.code)
+| project id, type, subscriptionId, location, sku, properties, powerState
 `;
 
 async function captureCostSnapshot(
@@ -124,6 +129,10 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       ...findOldSnapshots(resources),
       ...findIdleVpnGateways(resources),
       ...idleVmCandidates,
+      ...findMissingHybridBenefit(resources),
+      ...findMissingLinuxByol(resources),
+      ...findOutdatedVmSkus(resources),
+      ...findStoppedVmsRetainingResources(resources),
     ];
 
     const resourceById = new Map<string, ResourceGraphRow>(
@@ -170,8 +179,16 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           resourceId: candidate.resourceId,
           ruleType: candidate.ruleType,
           estimatedMonthlyCost,
+          savingsCategory: candidate.savingsCategory,
+          metricObserved: candidate.metricObserved,
+          periodAnalyzedDays: candidate.periodAnalyzedDays,
         },
-        update: { estimatedMonthlyCost },
+        update: {
+          estimatedMonthlyCost,
+          savingsCategory: candidate.savingsCategory,
+          metricObserved: candidate.metricObserved,
+          periodAnalyzedDays: candidate.periodAnalyzedDays,
+        },
       });
     }
 
