@@ -1,12 +1,14 @@
 import { prisma } from "@/lib/prisma";
-import { requireCustomerId } from "@/lib/tenant";
+import { requireCustomerId, getOperatorCustomerId, getManagedClients } from "@/lib/tenant";
 import { auth } from "@/auth";
 import { computeDashboardSummary } from "@/lib/dashboard-summary";
 import { DashboardClient } from "@/components/dashboard/DashboardClient";
 
 export default async function DashboardPage() {
   const customerId = await requireCustomerId();
+  const operatorCustomerId = await getOperatorCustomerId();
   const session = await auth();
+  const managedClients = await getManagedClients(operatorCustomerId);
 
   const findings = await prisma.wasteFinding.findMany({
     where: { subscription: { customerId }, status: "OPEN" },
@@ -33,6 +35,9 @@ export default async function DashboardPage() {
   return (
     <DashboardClient
       userLabel={session?.user?.name ?? session?.user?.email ?? ""}
+      operatorCustomerId={operatorCustomerId}
+      activeClientId={customerId}
+      managedClients={managedClients}
       summary={summary}
       activeResourceCount={activeResourceCount}
       findings={findings.map((f) => ({

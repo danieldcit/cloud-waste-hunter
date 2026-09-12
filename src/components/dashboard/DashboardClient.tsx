@@ -7,6 +7,7 @@ import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { categoryForRule, impactForCost, type DashboardCategory } from "@/lib/dashboard-categories";
 import { CostTrendChart } from "@/components/dashboard/CostTrendChart";
 import { signOutAction } from "@/app/dashboard/actions";
+import { ClientSwitcher } from "@/components/ClientSwitcher";
 import type { Locale } from "@/lib/i18n/dictionaries";
 
 interface FindingRow {
@@ -28,12 +29,18 @@ interface SubscriptionOption {
 
 export function DashboardClient({
   userLabel,
+  operatorCustomerId,
+  activeClientId,
+  managedClients,
   summary,
   activeResourceCount,
   findings,
   subscriptions,
 }: {
   userLabel: string;
+  operatorCustomerId: string;
+  activeClientId: string;
+  managedClients: { id: string; name: string }[];
   summary: { openFindingsCount: number; totalEstimatedMonthlySavings: number };
   activeResourceCount: number;
   findings: FindingRow[];
@@ -100,6 +107,12 @@ export function DashboardClient({
           onChange={(e) => setSearch(e.target.value)}
         />
         <div className="flex items-center gap-3 text-sm">
+          <ClientSwitcher
+            myAccountId={operatorCustomerId}
+            myAccountLabel={userLabel}
+            activeClientId={activeClientId}
+            managedClients={managedClients}
+          />
           <span>{userLabel}</span>
           <select
             value={locale}
