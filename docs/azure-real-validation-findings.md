@@ -53,11 +53,25 @@ Azure rejects same-tenant registrations with
 in-app "Ambientes" Lighthouse connect flow end-to-end with a single
 personal tenant. Additional findings along the way:
 
-- The ARM template the "Lighthouse" button links to
+- The ARM template the "Lighthouse" button linked to
   (`https://cloudwastehunter.blob.core.windows.net/templates/lighthouse.json`)
-  does not exist — the hostname doesn't resolve. That storage
-  account/blob was never provisioned; this is pre-existing unfinished
-  infrastructure, not something this session broke.
+  did not exist — the hostname didn't resolve. That storage account/blob
+  was never provisioned; this was pre-existing unfinished infrastructure,
+  not something this session broke. **Fixed**: a correct Bicep source
+  already existed at `infra/lighthouse/lighthouse.bicep` (never wired up)
+  but had a typo'd Reader role definition id
+  (`...fba81ae7` instead of the real `...fbe8a4b8`, which would have
+  made any real deployment fail with role-not-found). Fixed the id,
+  compiled the Bicep to `infra/lighthouse/lighthouse.json`, and pointed
+  `connect-link`'s `TEMPLATE_URI` at that file's raw GitHub URL instead
+  of a storage account — the repo is already public, so this needs no
+  Azure resource and no cost to host. Verified: the raw URL returns 200,
+  and `az deployment sub validate` against it with the real provider
+  tenant id reaches exactly the same-tenant `InvalidRegistrationDefinitionCreateRequest`
+  error as a hand-built template did earlier — confirming the template
+  itself is correct and would work against a genuine second tenant. The
+  same-tenant restriction below is the only remaining blocker, and it's
+  a platform/licensing limitation, not a code bug.
 - Creating a second Azure AD tenant to test cross-tenant delegation now
   requires a paid Microsoft Entra Workforce license (the tenant-creation
   blade shows *"Customers must own a paid license to create Microsoft
