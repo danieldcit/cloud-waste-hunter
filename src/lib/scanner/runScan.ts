@@ -19,17 +19,22 @@ import { findStoppedVmsRetainingResources } from "@/lib/waste-rules/stoppedVmRet
 import { estimateMonthlySavings } from "@/lib/waste-rules/savingsEstimate";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
 
+export const COMBINED_QUERY_TYPES = [
+  "microsoft.compute/disks",
+  "microsoft.network/publicipaddresses",
+  "microsoft.compute/snapshots",
+  "microsoft.network/vpngateways",
+  "microsoft.network/virtualnetworkgateways",
+  "microsoft.network/connections",
+  "microsoft.compute/virtualmachines",
+  "microsoft.compute/virtualmachinescalesets",
+  "microsoft.compute/virtualmachinescalesets/virtualmachines",
+  "microsoft.insights/autoscalesettings",
+];
+
 const COMBINED_QUERY = `
 Resources
-| where type in (
-    'microsoft.compute/disks',
-    'microsoft.network/publicipaddresses',
-    'microsoft.compute/snapshots',
-    'microsoft.network/vpngateways',
-    'microsoft.network/virtualnetworkgateways',
-    'microsoft.network/connections',
-    'microsoft.compute/virtualmachines'
-  )
+| where type in (${COMBINED_QUERY_TYPES.map((t) => `'${t}'`).join(", ")})
 | extend powerState = tostring(properties.extended.instanceView.powerState.code)
 | project id, type, subscriptionId, location, sku, properties, powerState
 `;

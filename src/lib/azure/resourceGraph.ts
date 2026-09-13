@@ -5,7 +5,7 @@ export interface ResourceGraphRow {
   type: string;
   subscriptionId: string;
   location?: string;
-  sku?: { name?: string; tier?: string } | null;
+  sku?: { name?: string; tier?: string; capacity?: number } | null;
   properties: Record<string, unknown>;
   powerState?: string;
 }

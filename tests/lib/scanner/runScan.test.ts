@@ -37,6 +37,19 @@ import {
 } from "@/lib/azure/subscriptionCost";
 import { runScan } from "@/lib/scanner/runScan";
 
+describe("COMBINED_QUERY resource types", () => {
+  it("includes the VMSS category-2 resource types", async () => {
+    const { COMBINED_QUERY_TYPES } = await import("@/lib/scanner/runScan");
+    expect(COMBINED_QUERY_TYPES).toEqual(
+      expect.arrayContaining([
+        "microsoft.compute/virtualmachinescalesets",
+        "microsoft.compute/virtualmachinescalesets/virtualmachines",
+        "microsoft.insights/autoscalesettings",
+      ]),
+    );
+  });
+});
+
 describe("runScan", () => {
   beforeEach(() => {
     vi.clearAllMocks();
