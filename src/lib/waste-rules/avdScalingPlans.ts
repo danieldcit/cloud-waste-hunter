@@ -69,11 +69,12 @@ function minutesSinceMidnight(t: ScalingPlanTimeOfDay | undefined): number | und
 }
 
 /**
- * Duration of the off-peak window (offPeakStartTime -> rampUpStartTime, wrapping past midnight
- * if rampUpStartTime is earlier in the clock than offPeakStartTime), in hours.
+ * Duration of the off-peak window (rampDownStartTime, falling back to offPeakStartTime if
+ * absent -> rampUpStartTime, wrapping past midnight if rampUpStartTime is earlier in the clock
+ * than the window's start), in hours.
  */
 export function offPeakHoursForSchedule(schedule: ScalingPlanSchedule): number {
-  const start = minutesSinceMidnight(schedule.offPeakStartTime);
+  const start = minutesSinceMidnight(schedule.rampDownStartTime ?? schedule.offPeakStartTime);
   const end = minutesSinceMidnight(schedule.rampUpStartTime);
   if (start === undefined || end === undefined) {
     return 0;
@@ -85,11 +86,12 @@ export function offPeakHoursForSchedule(schedule: ScalingPlanSchedule): number {
 /**
  * True when `now` (evaluated in UTC — this project does not convert Azure Monitor/schedule
  * timestamps across time zones anywhere else either) falls within this schedule's off-peak
- * window (offPeakStartTime -> rampUpStartTime) on one of its configured days, including the
- * portion of an overnight window that carries into the following calendar day.
+ * window (rampDownStartTime, falling back to offPeakStartTime if absent -> rampUpStartTime) on
+ * one of its configured days, including the portion of an overnight window that carries into the
+ * following calendar day.
  */
 export function isWithinOffPeakWindow(schedule: ScalingPlanSchedule, now: Date): boolean {
-  const start = minutesSinceMidnight(schedule.offPeakStartTime);
+  const start = minutesSinceMidnight(schedule.rampDownStartTime ?? schedule.offPeakStartTime);
   const end = minutesSinceMidnight(schedule.rampUpStartTime);
   if (start === undefined || end === undefined) {
     return false;

@@ -97,6 +97,16 @@ describe("offPeakHoursForSchedule", () => {
   it("returns 0 when either time is missing", () => {
     expect(offPeakHoursForSchedule({ daysOfWeek: ["Monday"] })).toBe(0);
   });
+
+  it("starts the window at rampDownStartTime, not offPeakStartTime, when both are set (18:00 -> 06:00 = 12 hours)", () => {
+    const schedule: ScalingPlanSchedule = {
+      daysOfWeek: ["Monday"],
+      rampDownStartTime: { hour: 18, minute: 0 },
+      offPeakStartTime: { hour: 20, minute: 0 },
+      rampUpStartTime: { hour: 6, minute: 0 },
+    };
+    expect(offPeakHoursForSchedule(schedule)).toBe(12);
+  });
 });
 
 describe("isWithinOffPeakWindow", () => {
@@ -128,5 +138,18 @@ describe("isWithinOffPeakWindow", () => {
     expect(isWithinOffPeakWindow({ daysOfWeek: ["Monday"] }, new Date("2024-01-01T22:00:00Z"))).toBe(
       false,
     );
+  });
+
+  it("treats the window as starting at rampDownStartTime, not the later offPeakStartTime, when both are set", () => {
+    const schedule: ScalingPlanSchedule = {
+      daysOfWeek: ["Monday"],
+      rampDownStartTime: { hour: 18, minute: 0 },
+      offPeakStartTime: { hour: 20, minute: 0 },
+      rampUpStartTime: { hour: 6, minute: 0 },
+    };
+    // 19:00 UTC on the same Monday: after the new 18:00 rampDown start, but before the old
+    // 20:00 offPeak start — would have been false before this fix.
+    const monday1900 = new Date("2024-01-01T19:00:00Z");
+    expect(isWithinOffPeakWindow(schedule, monday1900)).toBe(true);
   });
 });
