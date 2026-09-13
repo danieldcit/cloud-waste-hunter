@@ -204,6 +204,70 @@ describe("estimateRetailMonthlyCost (VM path)", () => {
   });
 });
 
+function vmssResource(vmSize: string, capacity: number, osType?: "Windows" | "Linux"): ResourceGraphRow {
+  return {
+    id: "/subscriptions/sub-1/vmss-1",
+    type: "microsoft.compute/virtualmachinescalesets",
+    subscriptionId: "sub-1",
+    location: "eastus",
+    sku: { name: vmSize, capacity },
+    properties: {
+      virtualMachineProfile: {
+        hardwareProfile: { vmSize },
+        ...(osType ? { storageProfile: { osDisk: { osType } } } : {}),
+      },
+    },
+  };
+}
+
+describe("estimateRetailMonthlyCost (VMSS path)", () => {
+  it("prices a VMSS at its per-instance rate times its instance capacity", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          priceItem({ retailPrice: 0.146, productName: "Virtual Machines Dv2 Series" }),
+        ]),
+      ),
+    );
+
+    const cost = await estimateRetailMonthlyCost(vmssResource("Standard_D2_v2", 4, "Linux"));
+
+    expect(cost).toBeCloseTo(0.146 * 730 * 4, 5);
+  });
+
+  it("prices a Windows VMSS at the Windows rate", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          priceItem({ retailPrice: 0.146, productName: "Virtual Machines Dv2 Series" }),
+          priceItem({ retailPrice: 0.238, productName: "Virtual Machines Dv2 Series Windows" }),
+        ]),
+      ),
+    );
+
+    const cost = await estimateRetailMonthlyCost(vmssResource("Standard_D2_v2", 2, "Windows"));
+
+    expect(cost).toBeCloseTo(0.238 * 730 * 2, 5);
+  });
+
+  it("defaults capacity to 1 when sku.capacity is missing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse([priceItem({ retailPrice: 0.146, productName: "Virtual Machines Dv2 Series" })]),
+      ),
+    );
+    const resource = vmssResource("Standard_D2_v2", 1, "Linux");
+    resource.sku = { name: "Standard_D2_v2" };
+
+    const cost = await estimateRetailMonthlyCost(resource);
+
+    expect(cost).toBeCloseTo(0.146 * 730, 5);
+  });
+});
+
 describe("estimateLinuxByolMonthlySavings", () => {
   it("returns a 25% approximation of the finding's resource cost", () => {
     expect(estimateLinuxByolMonthlySavings(100)).toBe(25);

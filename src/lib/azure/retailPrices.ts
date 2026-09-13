@@ -95,12 +95,7 @@ async function estimatePublicIpCost(resource: ResourceGraphRow): Promise<number>
  * `armSkuName` and lacks "Windows" in its own product name, so it can get
  * mistaken for the plain Linux/base price otherwise).
  */
-async function fetchVmPriceItems(resource: ResourceGraphRow): Promise<RetailPriceItem[]> {
-  const region = resource.location ?? "eastus";
-  const hardwareProfile = resource.properties.hardwareProfile as { vmSize?: string } | undefined;
-  const vmSize = hardwareProfile?.vmSize;
-  if (!vmSize) return [];
-
+async function fetchVmPriceItemsForSize(region: string, vmSize: string): Promise<RetailPriceItem[]> {
   const items = await queryRetailPrices(
     `serviceName eq 'Virtual Machines' and armRegionName eq '${escapeODataString(region)}' and armSkuName eq '${escapeODataString(vmSize)}'`,
   );
@@ -111,6 +106,14 @@ async function fetchVmPriceItems(resource: ResourceGraphRow): Promise<RetailPric
       !item.skuName.includes("Low Priority") &&
       !/cloud\s*services/i.test(item.productName),
   );
+}
+
+async function fetchVmPriceItems(resource: ResourceGraphRow): Promise<RetailPriceItem[]> {
+  const region = resource.location ?? "eastus";
+  const hardwareProfile = resource.properties.hardwareProfile as { vmSize?: string } | undefined;
+  const vmSize = hardwareProfile?.vmSize;
+  if (!vmSize) return [];
+  return fetchVmPriceItemsForSize(region, vmSize);
 }
 
 function isWindowsVm(resource: ResourceGraphRow): boolean {
@@ -131,6 +134,38 @@ async function estimateVmCost(resource: ResourceGraphRow): Promise<number> {
   const wantsWindows = isWindowsVm(resource);
   const price = items.find((item) => item.productName.includes("Windows") === wantsWindows);
   return price ? monthlyPriceFromItems([price]) : 0;
+}
+
+interface VmssVirtualMachineProfile {
+  hardwareProfile?: { vmSize?: string };
+  storageProfile?: { osDisk?: { osType?: string } };
+}
+
+function vmssVmSize(resource: ResourceGraphRow): string | undefined {
+  const profile = resource.properties.virtualMachineProfile as VmssVirtualMachineProfile | undefined;
+  return profile?.hardwareProfile?.vmSize;
+}
+
+function isWindowsVmss(resource: ResourceGraphRow): boolean {
+  const profile = resource.properties.virtualMachineProfile as VmssVirtualMachineProfile | undefined;
+  return profile?.storageProfile?.osDisk?.osType === "Windows";
+}
+
+/**
+ * Estimates a VM Scale Set's total monthly compute cost: the per-instance retail price
+ * (same logic as `estimateVmCost`, read from `virtualMachineProfile` instead of a VM's
+ * top-level properties) times its current instance count (`sku.capacity`).
+ */
+async function estimateVmssCost(resource: ResourceGraphRow): Promise<number> {
+  const vmSize = vmssVmSize(resource);
+  if (!vmSize) return 0;
+  const region = resource.location ?? "eastus";
+  const items = await fetchVmPriceItemsForSize(region, vmSize);
+  const wantsWindows = isWindowsVmss(resource);
+  const price = items.find((item) => item.productName.includes("Windows") === wantsWindows);
+  const perInstanceCost = price ? monthlyPriceFromItems([price]) : 0;
+  const capacity = resource.sku?.capacity ?? 1;
+  return perInstanceCost * capacity;
 }
 
 /** Used only when retail pricing data for the license delta itself is unavailable. */
@@ -215,6 +250,9 @@ export async function estimateRetailMonthlyCost(resource: ResourceGraphRow): Pro
     }
     if (type === "microsoft.compute/virtualmachines") {
       return await estimateVmCost(resource);
+    }
+    if (type === "microsoft.compute/virtualmachinescalesets") {
+      return await estimateVmssCost(resource);
     }
     if (
       type === "microsoft.network/vpngateways" ||
