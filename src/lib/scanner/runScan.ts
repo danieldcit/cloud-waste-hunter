@@ -52,6 +52,8 @@ export const COMBINED_QUERY_TYPES = [
   "microsoft.desktopvirtualization/hostpools",
   "microsoft.desktopvirtualization/hostpools/sessionhosts",
   "microsoft.desktopvirtualization/scalingplans",
+  "microsoft.compute/images",
+  "microsoft.compute/galleries/images/versions",
 ];
 
 const COMBINED_QUERY = `

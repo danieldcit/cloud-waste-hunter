@@ -75,6 +75,16 @@ describe("COMBINED_QUERY resource types", () => {
       ]),
     );
   });
+
+  it("includes the disk category-4 image resource types", async () => {
+    const { COMBINED_QUERY_TYPES } = await import("@/lib/scanner/runScan");
+    expect(COMBINED_QUERY_TYPES).toEqual(
+      expect.arrayContaining([
+        "microsoft.compute/images",
+        "microsoft.compute/galleries/images/versions",
+      ]),
+    );
+  });
 });
 
 describe("runScan", () => {
