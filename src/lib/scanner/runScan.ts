@@ -26,6 +26,14 @@ import { findOutdatedVmssSkus } from "@/lib/waste-rules/vmssOutdatedSku";
 import { findVmssOutdatedModelInstances } from "@/lib/waste-rules/vmssOutdatedModelInstances";
 import { findVmssSpotEligible } from "@/lib/waste-rules/vmssSpotEligible";
 import { findVmssMissingSavingsPlanOrReservation } from "@/lib/waste-rules/vmssMissingSavingsPlanOrReservation";
+import { findAvdSessionHostLowUtilization } from "@/lib/waste-rules/avdSessionHostLowUtilization";
+import { findAvdHostPoolExcessHosts } from "@/lib/waste-rules/avdHostPoolExcessHosts";
+import { findAvdHostPoolLowDensity } from "@/lib/waste-rules/avdHostPoolLowDensity";
+import { findAvdSessionHostPremiumDiskUnused } from "@/lib/waste-rules/avdSessionHostPremiumDiskUnused";
+import { findAvdScalingPlanMissing } from "@/lib/waste-rules/avdScalingPlanMissing";
+import { findAvdScalingPlanDisabled } from "@/lib/waste-rules/avdScalingPlanDisabled";
+import { findAvdHostRunningOutsideScalingWindow } from "@/lib/waste-rules/avdHostRunningOutsideScalingWindow";
+import { findAvdPersonalHostUnused } from "@/lib/waste-rules/avdPersonalHostUnused";
 import { estimateMonthlySavings } from "@/lib/waste-rules/savingsEstimate";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
 
@@ -189,6 +197,14 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       ...findVmssOutdatedModelInstances(resources),
       ...findVmssSpotEligible(resources),
       ...missingReservationCandidates,
+      ...findAvdSessionHostLowUtilization(resources),
+      ...findAvdHostPoolExcessHosts(resources),
+      ...findAvdHostPoolLowDensity(resources),
+      ...findAvdSessionHostPremiumDiskUnused(resources),
+      ...findAvdScalingPlanMissing(resources),
+      ...findAvdScalingPlanDisabled(resources),
+      ...findAvdHostRunningOutsideScalingWindow(resources),
+      ...findAvdPersonalHostUnused(resources),
     ];
 
     const resourceById = new Map<string, ResourceGraphRow>(

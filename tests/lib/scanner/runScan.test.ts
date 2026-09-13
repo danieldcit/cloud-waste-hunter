@@ -22,6 +22,7 @@ vi.mock("@/lib/azure/retailPrices", () => ({
   estimateHybridBenefitMonthlySavings: vi.fn(),
   estimateLinuxByolMonthlySavings: vi.fn(),
   estimateVmssSpotMonthlySavings: vi.fn(),
+  estimatePremiumDiskDowngradeMonthlySavings: vi.fn(),
 }));
 vi.mock("@/lib/azure/reservationCoverage", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/azure/reservationCoverage")>();
@@ -896,5 +897,71 @@ describe("runScan", () => {
     // crash the scan and does not itself produce a VMSS_IDLE_LOW_UTILIZATION finding.
     expect(findings.map((f) => f.ruleType).sort()).toEqual(["ORPHANED_DISK", "VMSS_NO_AUTOSCALE"]);
     expect(findings.some((f) => f.ruleType === "VMSS_IDLE_LOW_UTILIZATION")).toBe(false);
+  });
+
+  it("persists an AVD_SESSION_HOST_LOW_UTILIZATION finding end to end", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-avd-1", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-avd-1", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "/subscriptions/sub-avd-1/hostPools/pool-1/sessionHosts/host-1.contoso.com",
+        type: "microsoft.desktopvirtualization/hostpools/sessionhosts",
+        subscriptionId: "sub-avd-1",
+        properties: { sessions: 0, status: "Available" },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(90);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id, ruleType: "AVD_SESSION_HOST_LOW_UTILIZATION" },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      resourceId: "/subscriptions/sub-avd-1/hostPools/pool-1/sessionHosts/host-1.contoso.com",
+      estimatedMonthlyCost: 90,
+      estimatedMonthlySavings: 90,
+    });
+  });
+
+  it("persists an AVD_SCALING_PLAN_MISSING finding for a Pooled host pool with no scaling plan", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-avd-2", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-avd-2", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "/subscriptions/sub-avd-2/hostPools/pool-2",
+        type: "microsoft.desktopvirtualization/hostpools",
+        subscriptionId: "sub-avd-2",
+        properties: { hostPoolType: "Pooled", maxSessionLimit: 10 },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(0);
+    vi.mocked(estimateRetailMonthlyCost).mockResolvedValue(0);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id, ruleType: "AVD_SCALING_PLAN_MISSING" },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0].resourceId).toBe("/subscriptions/sub-avd-2/hostPools/pool-2");
+    expect(findings[0].estimatedMonthlySavings).toBeNull();
   });
 });
