@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.47.16.16243",
-      "templateHash": "2482876743528351007"
+      "templateHash": "9815374320358564812"
     }
   },
   "parameters": {
@@ -32,7 +32,8 @@
   "variables": {
     "registrationDefinitionName": "[guid(parameters('mspOfferName'), parameters('providerTenantId'), subscription().subscriptionId)]",
     "registrationAssignmentName": "[guid(variables('registrationDefinitionName'), subscription().subscriptionId)]",
-    "readerRoleId": "acdd72a7-3385-48ef-bd42-f606fbe8a4b8"
+    "readerRoleId": "acdd72a7-3385-48ef-bd42-f606fbe8a4b8",
+    "storageBlobDataReaderRoleId": "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1"
   },
   "resources": [
     {
@@ -48,6 +49,11 @@
             "principalId": "[parameters('providerPrincipalId')]",
             "principalIdDisplayName": "Cloud Waste Hunter Scanner",
             "roleDefinitionId": "[variables('readerRoleId')]"
+          },
+          {
+            "principalId": "[parameters('providerPrincipalId')]",
+            "principalIdDisplayName": "Cloud Waste Hunter Scanner (Storage)",
+            "roleDefinitionId": "[variables('storageBlobDataReaderRoleId')]"
           }
         ]
       }

@@ -12,6 +12,7 @@ param providerTenantId string
 var registrationDefinitionName = guid(mspOfferName, providerTenantId, subscription().subscriptionId)
 var registrationAssignmentName = guid(registrationDefinitionName, subscription().subscriptionId)
 var readerRoleId = 'acdd72a7-3385-48ef-bd42-f606fbe8a4b8'
+var storageBlobDataReaderRoleId = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 
 resource registrationDefinition 'Microsoft.ManagedServices/registrationDefinitions@2022-10-01' = {
   name: registrationDefinitionName
@@ -24,6 +25,11 @@ resource registrationDefinition 'Microsoft.ManagedServices/registrationDefinitio
         principalId: providerPrincipalId
         principalIdDisplayName: 'Cloud Waste Hunter Scanner'
         roleDefinitionId: readerRoleId
+      }
+      {
+        principalId: providerPrincipalId
+        principalIdDisplayName: 'Cloud Waste Hunter Scanner (Storage)'
+        roleDefinitionId: storageBlobDataReaderRoleId
       }
     ]
   }
