@@ -34,6 +34,15 @@ import { findAvdScalingPlanMissing } from "@/lib/waste-rules/avdScalingPlanMissi
 import { findAvdScalingPlanDisabled } from "@/lib/waste-rules/avdScalingPlanDisabled";
 import { findAvdHostRunningOutsideScalingWindow } from "@/lib/waste-rules/avdHostRunningOutsideScalingWindow";
 import { findAvdPersonalHostUnused } from "@/lib/waste-rules/avdPersonalHostUnused";
+import { findDiskIdleLowUtilization } from "@/lib/waste-rules/diskIdleLowUtilization";
+import { findDiskPremiumTierUnnecessary } from "@/lib/waste-rules/diskPremiumTierUnnecessary";
+import { findDiskPremiumV2Oversized } from "@/lib/waste-rules/diskPremiumV2Oversized";
+import { findDiskTierOversized } from "@/lib/waste-rules/diskTierOversized";
+import { findDiskNonProdPremium } from "@/lib/waste-rules/diskNonProdPremium";
+import { findSnapshotOrphanedSource } from "@/lib/waste-rules/snapshotOrphanedSource";
+import { findSnapshotExcessiveCount } from "@/lib/waste-rules/snapshotExcessiveCount";
+import { findImageOrphaned } from "@/lib/waste-rules/imageOrphaned";
+import { findGalleryImageVersionOld } from "@/lib/waste-rules/galleryImageVersionOld";
 import { isSessionHost, underlyingVm } from "@/lib/waste-rules/avdSessionHosts";
 import { estimateMonthlySavings } from "@/lib/waste-rules/savingsEstimate";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
@@ -196,6 +205,46 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       );
     }
 
+    let diskIdleCandidates: WasteFindingCandidate[] = [];
+    try {
+      diskIdleCandidates = await findDiskIdleLowUtilization(resources);
+    } catch (error) {
+      console.error(
+        "Disk idle-utilization rule failed; treating as zero idle disks for this scan",
+        error,
+      );
+    }
+
+    let diskPremiumTierCandidates: WasteFindingCandidate[] = [];
+    try {
+      diskPremiumTierCandidates = await findDiskPremiumTierUnnecessary(resources);
+    } catch (error) {
+      console.error(
+        "Disk premium-tier-unnecessary rule failed; treating as zero findings for this scan",
+        error,
+      );
+    }
+
+    let diskPremiumV2Candidates: WasteFindingCandidate[] = [];
+    try {
+      diskPremiumV2Candidates = await findDiskPremiumV2Oversized(resources);
+    } catch (error) {
+      console.error(
+        "Disk PremiumV2-oversized rule failed; treating as zero findings for this scan",
+        error,
+      );
+    }
+
+    let diskTierOversizedCandidates: WasteFindingCandidate[] = [];
+    try {
+      diskTierOversizedCandidates = await findDiskTierOversized(resources);
+    } catch (error) {
+      console.error(
+        "Disk tier-oversized rule failed; treating as zero findings for this scan",
+        error,
+      );
+    }
+
     const candidates: WasteFindingCandidate[] = [
       ...findOrphanedDisks(resources),
       ...findUnassociatedPublicIps(resources),
@@ -224,6 +273,15 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       ...findAvdScalingPlanDisabled(resources),
       ...findAvdHostRunningOutsideScalingWindow(resources),
       ...findAvdPersonalHostUnused(resources),
+      ...diskIdleCandidates,
+      ...diskPremiumTierCandidates,
+      ...diskPremiumV2Candidates,
+      ...diskTierOversizedCandidates,
+      ...findDiskNonProdPremium(resources),
+      ...findSnapshotOrphanedSource(resources),
+      ...findSnapshotExcessiveCount(resources),
+      ...findImageOrphaned(resources),
+      ...findGalleryImageVersionOld(resources),
     ];
 
     const resourceById = new Map<string, ResourceGraphRow>(

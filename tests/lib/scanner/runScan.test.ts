@@ -11,6 +11,7 @@ vi.mock("@/lib/azure/costManagement", () => ({
 vi.mock("@/lib/azure/monitorMetrics", () => ({
   getAverageCpuPercent: vi.fn(),
   getHourlyCpuBelowThreshold: vi.fn(),
+  getAverageDiskIops: vi.fn(),
 }));
 vi.mock("@/lib/azure/subscriptionCost", () => ({
   getSubscriptionMonthToDateSpend: vi.fn(),
@@ -36,7 +37,7 @@ vi.mock("@/lib/azure/reservationCoverage", async (importOriginal) => {
 
 import { queryResourceGraph } from "@/lib/azure/resourceGraph";
 import { estimateMonthlyCost } from "@/lib/azure/costManagement";
-import { getAverageCpuPercent, getHourlyCpuBelowThreshold } from "@/lib/azure/monitorMetrics";
+import { getAverageCpuPercent, getHourlyCpuBelowThreshold, getAverageDiskIops } from "@/lib/azure/monitorMetrics";
 import {
   estimateRetailMonthlyCost,
   estimateHybridBenefitMonthlySavings,
@@ -1061,6 +1062,78 @@ describe("runScan", () => {
     expect(findings[0]).toMatchObject({
       resourceId: diskId,
       billedResourceId: diskId,
+    });
+  });
+
+  it("persists a SNAPSHOT_ORPHANED_SOURCE finding end to end", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-disk-1", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-disk-1", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "/subscriptions/sub-disk-1/snapshots/snap-1",
+        type: "microsoft.compute/snapshots",
+        subscriptionId: "sub-disk-1",
+        properties: {
+          creationData: { sourceResourceId: "/subscriptions/sub-disk-1/disks/disk-removed" },
+        },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(4);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id, ruleType: "SNAPSHOT_ORPHANED_SOURCE" },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      resourceId: "/subscriptions/sub-disk-1/snapshots/snap-1",
+      estimatedMonthlyCost: 4,
+      estimatedMonthlySavings: 4,
+    });
+  });
+
+  it("persists a DISK_IDLE_LOW_UTILIZATION finding (async, IOPS-metric-backed) end to end", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-disk-2", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-disk-2", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "/subscriptions/sub-disk-2/disks/disk-1",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-disk-2",
+        properties: { diskState: "Attached" },
+      },
+    ]);
+    vi.mocked(getAverageDiskIops).mockResolvedValue(0.1);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(20);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id, ruleType: "DISK_IDLE_LOW_UTILIZATION" },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      resourceId: "/subscriptions/sub-disk-2/disks/disk-1",
+      savingsCategory: "HARD_SAVING",
+      estimatedMonthlyCost: 20,
+      estimatedMonthlySavings: 20,
     });
   });
 });
