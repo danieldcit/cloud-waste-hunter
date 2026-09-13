@@ -286,4 +286,56 @@ describe("estimateMonthlySavings", () => {
 
     expect(await estimateMonthlySavings(candidate, undefined, 240)).toBe(0);
   });
+
+  it.each([
+    "DISK_IDLE_LOW_UTILIZATION",
+    "SNAPSHOT_ORPHANED_SOURCE",
+    "SNAPSHOT_EXCESSIVE_COUNT",
+    "IMAGE_ORPHANED",
+    "GALLERY_IMAGE_VERSION_OLD",
+  ] as const)("returns the full resource cost for %s", async (ruleType) => {
+    const candidate: WasteFindingCandidate = {
+      ruleType,
+      resourceId: "res-1",
+      subscriptionId: "sub-1",
+    };
+
+    expect(await estimateMonthlySavings(candidate, undefined, 42)).toBe(42);
+  });
+
+  it.each(["DISK_PREMIUM_V2_OVERSIZED", "DISK_TIER_OVERSIZED"] as const)(
+    "returns null (no fabricated number) for %s",
+    async (ruleType) => {
+      const candidate: WasteFindingCandidate = {
+        ruleType,
+        resourceId: "disk-1",
+        subscriptionId: "sub-1",
+      };
+
+      expect(await estimateMonthlySavings(candidate, undefined, 500)).toBeNull();
+    },
+  );
+
+  it.each(["DISK_PREMIUM_TIER_UNNECESSARY", "DISK_NONPROD_PREMIUM"] as const)(
+    "delegates %s to estimatePremiumDiskDowngradeMonthlySavings",
+    async (ruleType) => {
+      vi.mocked(estimatePremiumDiskDowngradeMonthlySavings).mockResolvedValue(15);
+      const resource: ResourceGraphRow = {
+        id: "disk-1",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-1",
+        properties: {},
+      };
+      const candidate: WasteFindingCandidate = {
+        ruleType,
+        resourceId: "disk-1",
+        subscriptionId: "sub-1",
+      };
+
+      const savings = await estimateMonthlySavings(candidate, resource, 30);
+
+      expect(savings).toBe(15);
+      expect(estimatePremiumDiskDowngradeMonthlySavings).toHaveBeenCalledWith(resource);
+    },
+  );
 });

@@ -59,6 +59,15 @@ const SAVINGS_METHOD_BY_RULE: Record<WasteRuleType, SavingsMethod> = {
   AVD_SCALING_PLAN_DISABLED: "unknown",
   AVD_HOST_RUNNING_OUTSIDE_SCALING_WINDOW: "scaling_window_delta",
   AVD_PERSONAL_HOST_UNUSED: "full_cost",
+  DISK_IDLE_LOW_UTILIZATION: "full_cost",
+  DISK_PREMIUM_TIER_UNNECESSARY: "premium_disk_delta",
+  DISK_PREMIUM_V2_OVERSIZED: "unknown",
+  DISK_TIER_OVERSIZED: "unknown",
+  DISK_NONPROD_PREMIUM: "premium_disk_delta",
+  SNAPSHOT_ORPHANED_SOURCE: "full_cost",
+  SNAPSHOT_EXCESSIVE_COUNT: "full_cost",
+  IMAGE_ORPHANED: "full_cost",
+  GALLERY_IMAGE_VERSION_OLD: "full_cost",
 };
 
 /**
