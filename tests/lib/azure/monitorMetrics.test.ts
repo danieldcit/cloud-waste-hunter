@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as armFetchModule from "@/lib/azure/armFetch";
-import { getAverageCpuPercent, getHourlyCpuBelowThreshold } from "@/lib/azure/monitorMetrics";
+import { getAverageCpuPercent, getHourlyCpuBelowThreshold, getAverageDiskIops } from "@/lib/azure/monitorMetrics";
 
 describe("getAverageCpuPercent", () => {
   beforeEach(() => {
@@ -103,5 +103,53 @@ describe("getHourlyCpuBelowThreshold", () => {
     const [url] = spy.mock.calls[0];
     expect(url).toContain("interval=PT1H");
     expect(url).toContain("metricnames=Percentage%20CPU");
+  });
+});
+
+describe("getAverageDiskIops", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sums the average Read and Write IOPS/sec metrics over the period", async () => {
+    const spy = vi.spyOn(armFetchModule, "armFetch").mockImplementation(async (url: string) => {
+      if (url.includes("Read%20Operations")) {
+        return {
+          value: [{ timeseries: [{ data: [{ timeStamp: "2026-09-01T00:00:00Z", average: 3 }] }] }],
+        };
+      }
+      return {
+        value: [{ timeseries: [{ data: [{ timeStamp: "2026-09-01T00:00:00Z", average: 2 }] }] }],
+      };
+    });
+
+    const iops = await getAverageDiskIops("/subscriptions/sub-1/disks/disk-1");
+
+    expect(iops).toBe(5);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns 0 when there are no data points for either metric", async () => {
+    vi.spyOn(armFetchModule, "armFetch").mockResolvedValue({
+      value: [{ timeseries: [{ data: [] }] }],
+    });
+
+    const iops = await getAverageDiskIops("/subscriptions/sub-1/disks/disk-1");
+
+    expect(iops).toBe(0);
+  });
+
+  it("queries the exact lowercase metric names confirmed live against the real API", async () => {
+    const spy = vi
+      .spyOn(armFetchModule, "armFetch")
+      .mockResolvedValue({ value: [{ timeseries: [{ data: [] }] }] });
+
+    await getAverageDiskIops("/subscriptions/sub-1/disks/disk-1", 30);
+
+    const readUrl = spy.mock.calls[0][0] as string;
+    const writeUrl = spy.mock.calls[1][0] as string;
+    expect(decodeURIComponent(readUrl)).toContain("Composite Disk Read Operations/sec");
+    expect(decodeURIComponent(writeUrl)).toContain("Composite Disk Write Operations/sec");
+    expect(readUrl).toContain("interval=P1D");
   });
 });
