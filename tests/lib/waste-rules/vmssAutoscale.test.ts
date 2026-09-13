@@ -36,6 +36,55 @@ describe("findAutoscaleSettingFor", () => {
 
     expect(findAutoscaleSettingFor(VMSS_ID, [disk])).toBeUndefined();
   });
+
+  function autoscaleSettingWithId(
+    settingId: string,
+    targetResourceUri: string,
+    enabled: boolean | undefined,
+  ): ResourceGraphRow {
+    return {
+      id: settingId,
+      type: "microsoft.insights/autoscalesettings",
+      subscriptionId: "sub-1",
+      properties: { targetResourceUri, profiles: [], ...(enabled === undefined ? {} : { enabled }) },
+    };
+  }
+
+  it("prefers the enabled autoscale setting when a disabled and an enabled one both target the same VMSS", () => {
+    const disabled = autoscaleSettingWithId("setting-disabled", VMSS_ID, false);
+    const enabled = autoscaleSettingWithId("setting-enabled", VMSS_ID, true);
+
+    expect(findAutoscaleSettingFor(VMSS_ID, [disabled, enabled])).toBe(enabled);
+    // Order shouldn't matter.
+    expect(findAutoscaleSettingFor(VMSS_ID, [enabled, disabled])).toBe(enabled);
+  });
+
+  it("treats an undefined `enabled` as enabled, preferring it over an explicitly disabled one", () => {
+    const disabled = autoscaleSettingWithId("setting-disabled", VMSS_ID, false);
+    const implicitlyEnabled = autoscaleSettingWithId("setting-implicit", VMSS_ID, undefined);
+
+    expect(findAutoscaleSettingFor(VMSS_ID, [disabled, implicitlyEnabled])).toBe(implicitlyEnabled);
+  });
+
+  it("still returns a single disabled setting when it's the only one targeting the VMSS", () => {
+    const disabled = autoscaleSettingWithId("setting-disabled", VMSS_ID, false);
+
+    expect(findAutoscaleSettingFor(VMSS_ID, [disabled])).toBe(disabled);
+  });
+
+  it("returns correct results across repeated calls with the same resources array (index reuse) and a fresh array (index rebuild)", () => {
+    const setting = autoscaleSetting(VMSS_ID, []);
+    const resources = [setting];
+
+    expect(findAutoscaleSettingFor(VMSS_ID, resources)).toBe(setting);
+    // Repeated call with the SAME array reference should reuse the cached index.
+    expect(findAutoscaleSettingFor(VMSS_ID, resources)).toBe(setting);
+
+    // A fresh array (new reference, same content) should rebuild the index and still be correct.
+    const otherSetting = autoscaleSetting(VMSS_ID, []);
+    const freshResources = [otherSetting];
+    expect(findAutoscaleSettingFor(VMSS_ID, freshResources)).toBe(otherSetting);
+  });
 });
 
 describe("autoscaleProfiles", () => {
