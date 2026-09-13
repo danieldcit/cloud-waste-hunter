@@ -90,6 +90,9 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.connected": "Conectado",
     "ambientes.lastScan": "Último scan",
     "ambientes.neverScanned": "Ainda não escaneado",
+    "ambientes.permissionsOutdated":
+      "Esta conexão precisa de uma permissão adicional para novas verificações",
+    "ambientes.updatePermissions": "Atualizar permissões",
     "ambientes.deployInstructions":
       "Implante o template Azure Lighthouse abaixo e depois clique em Verificar conexão.",
   },
@@ -178,6 +181,9 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.connected": "Connected",
     "ambientes.lastScan": "Last scan",
     "ambientes.neverScanned": "Not scanned yet",
+    "ambientes.permissionsOutdated":
+      "This connection needs an additional permission for newer checks",
+    "ambientes.updatePermissions": "Update permissions",
     "ambientes.deployInstructions":
       "Deploy the Azure Lighthouse template below, then click Verify connection.",
   },
@@ -266,6 +272,9 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.connected": "Conectado",
     "ambientes.lastScan": "Último escaneo",
     "ambientes.neverScanned": "Aún no escaneado",
+    "ambientes.permissionsOutdated":
+      "Esta conexión necesita un permiso adicional para verificaciones más nuevas",
+    "ambientes.updatePermissions": "Actualizar permisos",
     "ambientes.deployInstructions":
       "Implemente la plantilla de Azure Lighthouse a continuación y luego haga clic en Verificar conexión.",
   },

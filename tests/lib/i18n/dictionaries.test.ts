@@ -84,3 +84,15 @@ describe("Disk category-4 rule labels", () => {
     }
   });
 });
+
+describe("Ambientes permission-upgrade labels", () => {
+  const keys = ["ambientes.permissionsOutdated", "ambientes.updatePermissions"];
+
+  it("has a real translation (not a key fallback) for every key in every locale", () => {
+    for (const locale of LOCALES) {
+      for (const key of keys) {
+        expect(translate(locale, key)).not.toBe(key);
+      }
+    }
+  });
+});

@@ -12,6 +12,7 @@ interface AmbienteRow {
   displayName: string;
   status: "PENDING" | "CONNECTED" | "ERROR";
   lastScanAt: string | null;
+  needsPermissionUpgrade: boolean;
 }
 
 interface ConnectLinkInfo {
@@ -208,8 +209,13 @@ export function AmbientesClient({
                   {" · "}
                   {t("ambientes.lastScan")}: {s.lastScanAt ?? t("ambientes.neverScanned")}
                 </p>
+                {s.status === "CONNECTED" && s.needsPermissionUpgrade && (
+                  <p className="mt-1 text-sm text-amber-600">
+                    {t("ambientes.permissionsOutdated")}
+                  </p>
+                )}
               </div>
-              {s.status === "PENDING" && (
+              {(s.status === "PENDING" || (s.status === "CONNECTED" && s.needsPermissionUpgrade)) && (
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -223,7 +229,9 @@ export function AmbientesClient({
                     className="bg-blue-600 text-white rounded px-3 py-1 hover:bg-blue-700"
                     onClick={() => handleVerify(s.id)}
                   >
-                    {t("ambientes.verify")}
+                    {s.needsPermissionUpgrade && s.status === "CONNECTED"
+                      ? t("ambientes.updatePermissions")
+                      : t("ambientes.verify")}
                   </button>
                 </div>
               )}

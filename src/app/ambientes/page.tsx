@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { requireCustomerId, getOperatorCustomerId, getManagedClients } from "@/lib/tenant";
 import { AmbientesClient } from "@/components/ambientes/AmbientesClient";
+import { needsPermissionUpgrade } from "@/lib/azure/lighthouseRoles";
 
 export default async function AmbientesPage() {
   const customerId = await requireCustomerId();
@@ -33,6 +34,7 @@ export default async function AmbientesPage() {
         displayName: s.displayName,
         status: s.status,
         lastScanAt: s.costSnapshots[0]?.capturedAt.toISOString() ?? null,
+        needsPermissionUpgrade: needsPermissionUpgrade(s.grantedRoleIds),
       }))}
     />
   );
