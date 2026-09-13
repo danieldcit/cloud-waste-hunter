@@ -124,6 +124,7 @@ model WasteFinding {
   subscription            Subscription     @relation(fields: [subscriptionId], references: [id])
   ruleType                WasteRuleType
   resourceId              String
+  billedResourceId        String?
   estimatedMonthlyCost    Float
   detectedAt              DateTime         @default(now())
   status                  FindingStatus    @default(OPEN)

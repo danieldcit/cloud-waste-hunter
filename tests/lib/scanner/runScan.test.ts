@@ -1013,8 +1013,44 @@ describe("runScan", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({
       resourceId: hostId,
+      billedResourceId: vmId,
       estimatedMonthlyCost: 75,
       estimatedMonthlySavings: 75,
+    });
+  });
+
+  it("sets billedResourceId to the finding's own resourceId for a non-AVD candidate", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-billed-plain", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-billed-plain", displayName: "Prod" },
+    });
+
+    const diskId = "/subscriptions/sub-billed-plain/disks/disk-1";
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: diskId,
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-billed-plain",
+        properties: { diskState: "Unattached" },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(10);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id, ruleType: "ORPHANED_DISK" },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      resourceId: diskId,
+      billedResourceId: diskId,
     });
   });
 });

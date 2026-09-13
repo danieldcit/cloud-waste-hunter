@@ -280,6 +280,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         create: {
           subscriptionId: subscription.id,
           resourceId: candidate.resourceId,
+          billedResourceId: costResource?.id ?? candidate.resourceId,
           ruleType: candidate.ruleType,
           estimatedMonthlyCost,
           estimatedMonthlySavings,
@@ -288,6 +289,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           periodAnalyzedDays: candidate.periodAnalyzedDays,
         },
         update: {
+          billedResourceId: costResource?.id ?? candidate.resourceId,
           estimatedMonthlyCost,
           estimatedMonthlySavings,
           savingsCategory: candidate.savingsCategory,

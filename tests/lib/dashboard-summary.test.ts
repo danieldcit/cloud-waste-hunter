@@ -38,4 +38,35 @@ describe("computeDashboardSummary", () => {
 
     expect(summary).toEqual({ openFindingsCount: 2, totalEstimatedMonthlySavings: 10 });
   });
+
+  it("counts a resource's savings once, using the maximum, when two findings have different resourceIds but the same billedResourceId", () => {
+    // e.g. an AVD session-host finding (resourceId = the session host) and an
+    // IDLE_VM finding (resourceId = the VM) both priced against the same
+    // underlying VM (billedResourceId) must not double-count that VM's cost.
+    const summary = computeDashboardSummary([
+      {
+        status: "OPEN",
+        estimatedMonthlySavings: 80,
+        resourceId: "session-host-1",
+        billedResourceId: "vm-1",
+      },
+      {
+        status: "OPEN",
+        estimatedMonthlySavings: 80,
+        resourceId: "vm-1",
+        billedResourceId: "vm-1",
+      },
+    ]);
+
+    expect(summary).toEqual({ openFindingsCount: 2, totalEstimatedMonthlySavings: 80 });
+  });
+
+  it("falls back to each finding's own resourceId for dedup when billedResourceId is null (rows not yet re-scanned), rather than collapsing all null-billedResourceId rows into one bucket", () => {
+    const summary = computeDashboardSummary([
+      { status: "OPEN", estimatedMonthlySavings: 10, resourceId: "res-1", billedResourceId: null },
+      { status: "OPEN", estimatedMonthlySavings: 5, resourceId: "res-2", billedResourceId: null },
+    ]);
+
+    expect(summary).toEqual({ openFindingsCount: 2, totalEstimatedMonthlySavings: 15 });
+  });
 });
