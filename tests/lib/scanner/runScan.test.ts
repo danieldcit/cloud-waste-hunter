@@ -10,6 +10,7 @@ vi.mock("@/lib/azure/costManagement", () => ({
 }));
 vi.mock("@/lib/azure/monitorMetrics", () => ({
   getAverageCpuPercent: vi.fn(),
+  getHourlyCpuBelowThreshold: vi.fn(),
 }));
 vi.mock("@/lib/azure/subscriptionCost", () => ({
   getSubscriptionMonthToDateSpend: vi.fn(),
@@ -20,16 +21,22 @@ vi.mock("@/lib/azure/retailPrices", () => ({
   estimateRetailMonthlyCost: vi.fn(),
   estimateHybridBenefitMonthlySavings: vi.fn(),
   estimateLinuxByolMonthlySavings: vi.fn(),
+  estimateVmssSpotMonthlySavings: vi.fn(),
+}));
+vi.mock("@/lib/azure/reservationCoverage", () => ({
+  findReservationRecommendation: vi.fn(),
+  estimateReservationCoverageMonthlySavings: vi.fn(),
 }));
 
 import { queryResourceGraph } from "@/lib/azure/resourceGraph";
 import { estimateMonthlyCost } from "@/lib/azure/costManagement";
-import { getAverageCpuPercent } from "@/lib/azure/monitorMetrics";
+import { getAverageCpuPercent, getHourlyCpuBelowThreshold } from "@/lib/azure/monitorMetrics";
 import {
   estimateRetailMonthlyCost,
   estimateHybridBenefitMonthlySavings,
   estimateLinuxByolMonthlySavings,
 } from "@/lib/azure/retailPrices";
+import { estimateReservationCoverageMonthlySavings } from "@/lib/azure/reservationCoverage";
 import {
   getSubscriptionMonthToDateSpend,
   getSubscriptionForecast,
@@ -605,5 +612,208 @@ describe("runScan", () => {
       metricObserved: 2,
       periodAnalyzedDays: 90,
     });
+  });
+
+  it("persists a VMSS_NO_AUTOSCALE finding for a VMSS with no autoscale settings", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-vmss-1", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-vmss-1", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vmss-1",
+        type: "microsoft.compute/virtualmachinescalesets",
+        subscriptionId: "sub-vmss-1",
+        sku: { name: "Standard_D2s_v5", capacity: 3 },
+        properties: {},
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(90);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(50);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      ruleType: "VMSS_NO_AUTOSCALE",
+      resourceId: "vmss-1",
+      savingsCategory: "POTENTIAL_SAVING",
+      estimatedMonthlyCost: 90,
+      estimatedMonthlySavings: null,
+    });
+  });
+
+  it("persists a VMSS_IDLE_LOW_UTILIZATION finding using the aggregated VMSS-level CPU metric", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-vmss-2", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-vmss-2", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vmss-2",
+        type: "microsoft.compute/virtualmachinescalesets",
+        subscriptionId: "sub-vmss-2",
+        sku: { name: "Standard_D2s_v5", capacity: 2 },
+        properties: {},
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(60);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(2);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id, ruleType: "VMSS_IDLE_LOW_UTILIZATION" },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      savingsCategory: "HARD_SAVING",
+      metricObserved: 2,
+      periodAnalyzedDays: 90,
+      estimatedMonthlySavings: 60,
+    });
+  });
+
+  it("persists a VMSS_NONPROD_NO_SCHEDULE finding with savings from the observed idle-hours fraction", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-vmss-3", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-vmss-3", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vmss-dev-3",
+        type: "microsoft.compute/virtualmachinescalesets",
+        subscriptionId: "sub-vmss-3",
+        sku: { name: "Standard_D2s_v5", capacity: 1 },
+        properties: {},
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(100);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(50);
+    vi.mocked(getHourlyCpuBelowThreshold).mockResolvedValue(0.6);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id, ruleType: "VMSS_NONPROD_NO_SCHEDULE" },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      estimatedMonthlyCost: 100,
+      estimatedMonthlySavings: 60,
+    });
+  });
+
+  it("persists a VMSS_MISSING_SAVINGS_PLAN_OR_RESERVATION finding using the reservation recommendation savings", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-vmss-4", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-vmss-4", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vmss-4",
+        type: "microsoft.compute/virtualmachinescalesets",
+        subscriptionId: "sub-vmss-4",
+        location: "eastus",
+        sku: { name: "Standard_D2s_v5", capacity: 2 },
+        properties: { virtualMachineProfile: { hardwareProfile: { vmSize: "Standard_D2s_v5" } } },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(150);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(50);
+    const { findReservationRecommendation } = await import("@/lib/azure/reservationCoverage");
+    vi.mocked(findReservationRecommendation).mockResolvedValue({
+      properties: { netSavings: 45 },
+    });
+    vi.mocked(estimateReservationCoverageMonthlySavings).mockResolvedValue(45);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: {
+        subscriptionId: subscription.id,
+        ruleType: "VMSS_MISSING_SAVINGS_PLAN_OR_RESERVATION",
+      },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      resourceId: "vmss-4",
+      estimatedMonthlyCost: 150,
+      estimatedMonthlySavings: 45,
+    });
+  });
+
+  it("does not fail the whole scan when the VMSS idle-utilization rule throws", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-vmss-5", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-vmss-5", displayName: "Prod" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "disk-vmss-5",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-vmss-5",
+        properties: { diskState: "Unattached" },
+      },
+      {
+        id: "vmss-5",
+        type: "microsoft.compute/virtualmachinescalesets",
+        subscriptionId: "sub-vmss-5",
+        sku: { name: "Standard_D2s_v5", capacity: 1 },
+        properties: {},
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(9.99);
+    vi.mocked(getAverageCpuPercent).mockRejectedValue(new Error("Azure Monitor throttled"));
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const scanRun = await prisma.scanRun.findFirstOrThrow({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(scanRun.status).toBe("SUCCEEDED");
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    // vmss-5 has no autoscale settings, so VMSS_NO_AUTOSCALE (a synchronous rule,
+    // unaffected by the Monitor throttling) legitimately fires alongside ORPHANED_DISK.
+    // The point of this test is that the throwing async idle-utilization rule does not
+    // crash the scan and does not itself produce a VMSS_IDLE_LOW_UTILIZATION finding.
+    expect(findings.map((f) => f.ruleType).sort()).toEqual(["ORPHANED_DISK", "VMSS_NO_AUTOSCALE"]);
+    expect(findings.some((f) => f.ruleType === "VMSS_IDLE_LOW_UTILIZATION")).toBe(false);
   });
 });

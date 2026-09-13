@@ -16,6 +16,16 @@ import { findMissingHybridBenefit } from "@/lib/waste-rules/missingHybridBenefit
 import { findMissingLinuxByol } from "@/lib/waste-rules/missingLinuxByol";
 import { findOutdatedVmSkus } from "@/lib/waste-rules/outdatedVmSku";
 import { findStoppedVmsRetainingResources } from "@/lib/waste-rules/stoppedVmRetainingResources";
+import { findVmssWithoutAutoscale } from "@/lib/waste-rules/vmssNoAutoscale";
+import { findVmssWithHighMaxInstances } from "@/lib/waste-rules/vmssMaxInstancesHigh";
+import { findVmssAutoscaleWithoutScaleIn } from "@/lib/waste-rules/vmssAutoscaleNoScaleIn";
+import { findVmssScaleOutMetricInadequate } from "@/lib/waste-rules/vmssScaleOutMetricInadequate";
+import { findVmssNonProdWithoutSchedule } from "@/lib/waste-rules/vmssNonProdNoSchedule";
+import { findVmssIdleLowUtilization } from "@/lib/waste-rules/vmssIdleLowUtilization";
+import { findOutdatedVmssSkus } from "@/lib/waste-rules/vmssOutdatedSku";
+import { findVmssOutdatedModelInstances } from "@/lib/waste-rules/vmssOutdatedModelInstances";
+import { findVmssSpotEligible } from "@/lib/waste-rules/vmssSpotEligible";
+import { findVmssMissingSavingsPlanOrReservation } from "@/lib/waste-rules/vmssMissingSavingsPlanOrReservation";
 import { estimateMonthlySavings } from "@/lib/waste-rules/savingsEstimate";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
 
@@ -129,6 +139,26 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       );
     }
 
+    let idleVmssCandidates: WasteFindingCandidate[] = [];
+    try {
+      idleVmssCandidates = await findVmssIdleLowUtilization(resources);
+    } catch (error) {
+      console.error(
+        "Idle VMSS rule failed; treating as zero idle VMSS for this scan",
+        error,
+      );
+    }
+
+    let missingReservationCandidates: WasteFindingCandidate[] = [];
+    try {
+      missingReservationCandidates = await findVmssMissingSavingsPlanOrReservation(resources);
+    } catch (error) {
+      console.error(
+        "VMSS reservation-coverage rule failed; treating as zero findings for this scan",
+        error,
+      );
+    }
+
     const candidates: WasteFindingCandidate[] = [
       ...findOrphanedDisks(resources),
       ...findUnassociatedPublicIps(resources),
@@ -139,6 +169,16 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       ...findMissingLinuxByol(resources),
       ...findOutdatedVmSkus(resources),
       ...findStoppedVmsRetainingResources(resources),
+      ...findVmssWithoutAutoscale(resources),
+      ...findVmssWithHighMaxInstances(resources),
+      ...findVmssAutoscaleWithoutScaleIn(resources),
+      ...findVmssScaleOutMetricInadequate(resources),
+      ...findVmssNonProdWithoutSchedule(resources),
+      ...idleVmssCandidates,
+      ...findOutdatedVmssSkus(resources),
+      ...findVmssOutdatedModelInstances(resources),
+      ...findVmssSpotEligible(resources),
+      ...missingReservationCandidates,
     ];
 
     const resourceById = new Map<string, ResourceGraphRow>(
