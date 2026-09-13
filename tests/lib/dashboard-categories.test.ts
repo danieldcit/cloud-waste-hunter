@@ -49,6 +49,23 @@ describe("categoryForRule", () => {
       expect(categoryForRule(ruleType)).toBe("compute");
     }
   });
+
+  it("maps every disk category-4 rule to storage", () => {
+    const diskRuleTypes = [
+      "DISK_IDLE_LOW_UTILIZATION",
+      "DISK_PREMIUM_TIER_UNNECESSARY",
+      "DISK_PREMIUM_V2_OVERSIZED",
+      "DISK_TIER_OVERSIZED",
+      "DISK_NONPROD_PREMIUM",
+      "SNAPSHOT_ORPHANED_SOURCE",
+      "SNAPSHOT_EXCESSIVE_COUNT",
+      "IMAGE_ORPHANED",
+      "GALLERY_IMAGE_VERSION_OLD",
+    ] as const;
+    for (const ruleType of diskRuleTypes) {
+      expect(categoryForRule(ruleType)).toBe("storage");
+    }
+  });
 });
 
 describe("impactForCost", () => {

@@ -30,6 +30,15 @@ const CATEGORY_BY_RULE: Record<WasteRuleType, DashboardCategory> = {
   AVD_SCALING_PLAN_DISABLED: "compute",
   AVD_HOST_RUNNING_OUTSIDE_SCALING_WINDOW: "compute",
   AVD_PERSONAL_HOST_UNUSED: "compute",
+  DISK_IDLE_LOW_UTILIZATION: "storage",
+  DISK_PREMIUM_TIER_UNNECESSARY: "storage",
+  DISK_PREMIUM_V2_OVERSIZED: "storage",
+  DISK_TIER_OVERSIZED: "storage",
+  DISK_NONPROD_PREMIUM: "storage",
+  SNAPSHOT_ORPHANED_SOURCE: "storage",
+  SNAPSHOT_EXCESSIVE_COUNT: "storage",
+  IMAGE_ORPHANED: "storage",
+  GALLERY_IMAGE_VERSION_OLD: "storage",
 };
 
 export function categoryForRule(ruleType: WasteRuleType): DashboardCategory {
