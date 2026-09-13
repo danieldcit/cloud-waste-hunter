@@ -43,6 +43,7 @@ model Subscription {
   displayName         String
   status              SubscriptionStatus @default(PENDING)
   connectedAt         DateTime?
+  grantedRoleIds      String[]           @default([])
   createdAt           DateTime           @default(now())
   scanRuns            ScanRun[]
   resources           Resource[]
