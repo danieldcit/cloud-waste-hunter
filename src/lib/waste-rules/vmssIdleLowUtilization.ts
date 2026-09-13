@@ -20,9 +20,10 @@ export async function findVmssIdleLowUtilization(
   resources: ResourceGraphRow[],
   getAverageCpu: (resourceId: string, days: number) => Promise<number> = getAverageCpuPercent,
 ): Promise<WasteFindingCandidate[]> {
-  const scaleSets = resources.filter(
-    (r) => r.type.toLowerCase() === "microsoft.compute/virtualmachinescalesets",
-  );
+  const scaleSets = resources
+    .filter((r) => r.type.toLowerCase() === "microsoft.compute/virtualmachinescalesets")
+    // Skip capacity-0 scale sets: a deliberate conservative safeguard, not just a capacity check — Flexible-mode metric availability for this scale-set-level metric has never been live-validated against a real VMSS resource.
+    .filter((r) => (r.sku?.capacity ?? 1) > 0);
 
   const candidates: WasteFindingCandidate[] = [];
   for (const vmss of scaleSets) {

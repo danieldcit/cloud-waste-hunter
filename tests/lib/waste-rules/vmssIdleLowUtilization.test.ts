@@ -73,4 +73,38 @@ describe("findVmssIdleLowUtilization", () => {
     expect(result).toEqual([]);
     expect(getAverageCpu).not.toHaveBeenCalled();
   });
+
+  it("never flags (or queries) a scale set at capacity 0, even if a 0% CPU reading is returned", async () => {
+    const vmss: ResourceGraphRow = {
+      ...vmssRow("/subscriptions/sub-1/vmss-capacity-0"),
+      sku: { name: "Standard_D2s_v5", capacity: 0 },
+    };
+    const getAverageCpu = vi.fn().mockResolvedValue(0);
+
+    const result = await findVmssIdleLowUtilization([vmss], getAverageCpu);
+
+    expect(result).toEqual([]);
+    expect(getAverageCpu).not.toHaveBeenCalled();
+  });
+
+  it("still flags a scale set with capacity > 0 and genuinely low CPU (no regression)", async () => {
+    const vmss: ResourceGraphRow = {
+      ...vmssRow("/subscriptions/sub-1/vmss-capacity-3"),
+      sku: { name: "Standard_D2s_v5", capacity: 3 },
+    };
+    const getAverageCpu = vi.fn().mockResolvedValue(2);
+
+    const result = await findVmssIdleLowUtilization([vmss], getAverageCpu);
+
+    expect(result).toEqual([
+      {
+        ruleType: "VMSS_IDLE_LOW_UTILIZATION",
+        resourceId: vmss.id,
+        subscriptionId: "sub-1",
+        savingsCategory: "HARD_SAVING",
+        metricObserved: 2,
+        periodAnalyzedDays: 90,
+      },
+    ]);
+  });
 });

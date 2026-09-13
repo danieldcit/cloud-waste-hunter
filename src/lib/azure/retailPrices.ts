@@ -13,6 +13,7 @@ interface RetailPriceItem {
 
 interface RetailPricesResponse {
   Items: RetailPriceItem[];
+  NextPageLink?: string | null;
 }
 
 const HOURS_PER_MONTH = 730;
@@ -22,15 +23,27 @@ function escapeODataString(value: string): string {
   return value.replace(/'/g, "''");
 }
 
+/**
+ * Fetches every page of a Retail Prices API query, following `NextPageLink` until it is
+ * null/absent. A region-wide query (e.g. the Spot discount ratio scan) commonly returns
+ * 1000+ rows across multiple pages — reading only page 1 silently truncates the result set.
+ */
 async function queryRetailPrices(filter: string): Promise<RetailPriceItem[]> {
-  const url = `${RETAIL_PRICES_URL}?$filter=${encodeURIComponent(filter)}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    console.error(`Retail Prices API request failed with ${response.status}: ${url}`);
-    return [];
+  const items: RetailPriceItem[] = [];
+  let url: string | null = `${RETAIL_PRICES_URL}?$filter=${encodeURIComponent(filter)}`;
+
+  while (url) {
+    const response: Response = await fetch(url);
+    if (!response.ok) {
+      console.error(`Retail Prices API request failed with ${response.status}: ${url}`);
+      break;
+    }
+    const data = (await response.json()) as RetailPricesResponse;
+    items.push(...data.Items);
+    url = data.NextPageLink ?? null;
   }
-  const data = (await response.json()) as RetailPricesResponse;
-  return data.Items.filter((item) => item.type === "Consumption");
+
+  return items.filter((item) => item.type === "Consumption");
 }
 
 function monthlyPriceFromItems(items: RetailPriceItem[]): number {
@@ -192,20 +205,24 @@ async function estimateRegionalSpotDiscountRatio(region: string): Promise<number
   );
   const hourly = items.filter(isHourlyVmMeter);
 
+  // Keyed by armSkuName + OS, not armSkuName alone: a Windows meter and a Linux meter for the
+  // same VM size share the same armSkuName, so a bare-armSkuName key would let one silently
+  // overwrite the other and badly skew the resulting ratio.
   const onDemandBySku = new Map<string, number>();
   const spotBySku = new Map<string, number>();
   for (const item of hourly) {
     if (item.skuName.includes("Low Priority")) continue;
+    const key = `${item.armSkuName}::${item.productName.includes("Windows")}`;
     if (item.skuName.includes("Spot")) {
-      spotBySku.set(item.armSkuName, item.retailPrice);
+      spotBySku.set(key, item.retailPrice);
     } else {
-      onDemandBySku.set(item.armSkuName, item.retailPrice);
+      onDemandBySku.set(key, item.retailPrice);
     }
   }
 
   const ratios: number[] = [];
-  for (const [sku, spotPrice] of spotBySku) {
-    const onDemandPrice = onDemandBySku.get(sku);
+  for (const [key, spotPrice] of spotBySku) {
+    const onDemandPrice = onDemandBySku.get(key);
     if (onDemandPrice && onDemandPrice > 0) {
       ratios.push(spotPrice / onDemandPrice);
     }

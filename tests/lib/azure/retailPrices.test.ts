@@ -364,4 +364,106 @@ describe("estimateVmssSpotMonthlySavings", () => {
     expect(savings).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("aggregates every page of the region-wide Spot ratio query, not just page 1", async () => {
+    const fetchMock = vi.fn();
+    // Call 1: exact-SKU query for the target VMSS's own size — no Spot meter, forces fallback.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse([
+        spotAwarePriceItem({
+          retailPrice: 0.2,
+          skuName: "D8 v2",
+          productName: "Virtual Machines Dv2 Series",
+          armSkuName: "Standard_D8_v2",
+        }),
+      ]),
+    );
+    // Call 2: page 1 of the region-wide ratio query — only the on-demand half of the pair.
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        Items: [
+          spotAwarePriceItem({
+            retailPrice: 0.2,
+            skuName: "D4 v2",
+            productName: "Virtual Machines Dv2 Series",
+            armSkuName: "Standard_D4_v2",
+          }),
+        ],
+        NextPageLink: "https://prices.azure.com/api/retail/prices?$skip=100",
+      }),
+    });
+    // Call 3: page 2 — only the Spot half of the same pair. If NextPageLink isn't followed,
+    // this half is silently lost and the ratio can never be computed.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse([
+        spotAwarePriceItem({
+          retailPrice: 0.1,
+          skuName: "D4 v2 Spot",
+          productName: "Virtual Machines Dv2 Series",
+          armSkuName: "Standard_D4_v2",
+        }),
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const savings = await estimateVmssSpotMonthlySavings(vmssResource("Standard_D8_v2", 1, "Linux"));
+
+    // ratio = 0.1/0.2 = 0.5, only derivable if both pages were combined.
+    expect(savings).toBeCloseTo(0.2 * 730 * (1 - 0.5), 5);
+  });
+
+  it("keeps a Windows and a Linux meter sharing an armSkuName as two independent ratios", async () => {
+    const fetchMock = vi.fn();
+    // Call 1: exact-SKU query for the target VMSS's own size — no Spot meter, forces fallback.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse([
+        spotAwarePriceItem({
+          retailPrice: 1.0,
+          skuName: "D8 v2",
+          productName: "Virtual Machines Dv2 Series",
+          armSkuName: "Standard_D8_v2",
+        }),
+      ]),
+    );
+    // Call 2: region-wide ratio query. Windows and Linux meters for the SAME armSkuName
+    // (Standard_D2_v2), with very different discount ratios (0.25 vs 0.5). A bare-armSkuName
+    // key would let one OS's price silently overwrite the other's in the lookup maps.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse([
+        spotAwarePriceItem({
+          retailPrice: 0.4,
+          skuName: "D2 v2",
+          productName: "Virtual Machines Dv2 Series Windows",
+          armSkuName: "Standard_D2_v2",
+        }),
+        spotAwarePriceItem({
+          retailPrice: 0.1,
+          skuName: "D2 v2 Spot",
+          productName: "Virtual Machines Dv2 Series Windows",
+          armSkuName: "Standard_D2_v2",
+        }),
+        spotAwarePriceItem({
+          retailPrice: 0.1,
+          skuName: "D2 v2",
+          productName: "Virtual Machines Dv2 Series",
+          armSkuName: "Standard_D2_v2",
+        }),
+        spotAwarePriceItem({
+          retailPrice: 0.05,
+          skuName: "D2 v2 Spot",
+          productName: "Virtual Machines Dv2 Series",
+          armSkuName: "Standard_D2_v2",
+        }),
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const savings = await estimateVmssSpotMonthlySavings(vmssResource("Standard_D8_v2", 1, "Linux"));
+
+    // Correct: average of the two independent ratios, Windows (0.1/0.4 = 0.25) and
+    // Linux (0.05/0.1 = 0.5) -> 0.375. A colliding bare-armSkuName key would instead
+    // overwrite down to a single (wrong) ratio of 0.5.
+    expect(savings).toBeCloseTo(1.0 * 730 * (1 - 0.375), 5);
+  });
 });
