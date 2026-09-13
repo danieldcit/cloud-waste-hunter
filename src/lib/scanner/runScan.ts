@@ -117,9 +117,16 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
     await prisma.resource.deleteMany({
       where: { subscriptionId: subscription.id },
     });
-    if (resources.length > 0) {
+    // VMSS instance child rows (can be thousands per large scale set) are never read back from
+    // Postgres — only findVmssOutdatedModelInstances uses them, and it reads the in-memory
+    // Resource Graph array below, not this audit table. Persisting them here is pure DB write
+    // waste at scale, so they're excluded from this table only; `resources` itself is untouched.
+    const persistedResources = resources.filter(
+      (r) => r.type.toLowerCase() !== "microsoft.compute/virtualmachinescalesets/virtualmachines",
+    );
+    if (persistedResources.length > 0) {
       await prisma.resource.createMany({
-        data: resources.map((r) => ({
+        data: persistedResources.map((r) => ({
           subscriptionId: subscription.id,
           scanRunId: scanRun.id,
           resourceId: r.id,

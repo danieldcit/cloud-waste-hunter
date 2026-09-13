@@ -23,10 +23,15 @@ vi.mock("@/lib/azure/retailPrices", () => ({
   estimateLinuxByolMonthlySavings: vi.fn(),
   estimateVmssSpotMonthlySavings: vi.fn(),
 }));
-vi.mock("@/lib/azure/reservationCoverage", () => ({
-  findReservationRecommendation: vi.fn(),
-  estimateReservationCoverageMonthlySavings: vi.fn(),
-}));
+vi.mock("@/lib/azure/reservationCoverage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/azure/reservationCoverage")>();
+  return {
+    ...actual,
+    findReservationRecommendation: vi.fn(),
+    listReservationRecommendations: vi.fn(),
+    estimateReservationCoverageMonthlySavings: vi.fn(),
+  };
+});
 
 import { queryResourceGraph } from "@/lib/azure/resourceGraph";
 import { estimateMonthlyCost } from "@/lib/azure/costManagement";
@@ -36,7 +41,10 @@ import {
   estimateHybridBenefitMonthlySavings,
   estimateLinuxByolMonthlySavings,
 } from "@/lib/azure/retailPrices";
-import { estimateReservationCoverageMonthlySavings } from "@/lib/azure/reservationCoverage";
+import {
+  listReservationRecommendations,
+  estimateReservationCoverageMonthlySavings,
+} from "@/lib/azure/reservationCoverage";
 import {
   getSubscriptionMonthToDateSpend,
   getSubscriptionForecast,
@@ -745,10 +753,16 @@ describe("runScan", () => {
     ]);
     vi.mocked(estimateMonthlyCost).mockResolvedValue(150);
     vi.mocked(getAverageCpuPercent).mockResolvedValue(50);
-    const { findReservationRecommendation } = await import("@/lib/azure/reservationCoverage");
-    vi.mocked(findReservationRecommendation).mockResolvedValue({
-      properties: { netSavings: 45 },
-    });
+    vi.mocked(listReservationRecommendations).mockResolvedValue([
+      {
+        properties: {
+          skuName: "Standard_D2s_v5",
+          location: "eastus",
+          recommendedQuantity: 1,
+          netSavings: 45,
+        },
+      },
+    ]);
     vi.mocked(estimateReservationCoverageMonthlySavings).mockResolvedValue(45);
     vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
     vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
@@ -768,6 +782,62 @@ describe("runScan", () => {
       estimatedMonthlyCost: 150,
       estimatedMonthlySavings: 45,
     });
+  });
+
+  it("excludes VMSS instance child rows from the persisted Resource table, while still using them in-memory for VMSS_OUTDATED_MODEL_INSTANCES", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-vmss-instances", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: {
+        customerId: customer.id,
+        azureSubscriptionId: "sub-vmss-instances",
+        displayName: "Prod",
+      },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "/subscriptions/sub-vmss-instances/vmss-instances-1",
+        type: "microsoft.compute/virtualmachinescalesets",
+        subscriptionId: "sub-vmss-instances",
+        sku: { name: "Standard_D2s_v5", capacity: 1 },
+        properties: {},
+      },
+      {
+        id: "/subscriptions/sub-vmss-instances/vmss-instances-1/virtualMachines/0",
+        type: "microsoft.compute/virtualmachinescalesets/virtualmachines",
+        subscriptionId: "sub-vmss-instances",
+        properties: { latestModelApplied: false },
+      },
+      {
+        id: "/subscriptions/sub-vmss-instances/vmss-instances-1/virtualMachines/1",
+        type: "Microsoft.Compute/virtualMachineScaleSets/virtualMachines",
+        subscriptionId: "sub-vmss-instances",
+        properties: { latestModelApplied: true },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(10);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(50);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const persistedResources = await prisma.resource.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(persistedResources).toHaveLength(1);
+    expect(persistedResources[0].type.toLowerCase()).toBe(
+      "microsoft.compute/virtualmachinescalesets",
+    );
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id, ruleType: "VMSS_OUTDATED_MODEL_INSTANCES" },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0].resourceId).toBe("/subscriptions/sub-vmss-instances/vmss-instances-1");
   });
 
   it("does not fail the whole scan when the VMSS idle-utilization rule throws", async () => {

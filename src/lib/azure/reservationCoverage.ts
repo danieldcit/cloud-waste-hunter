@@ -8,48 +8,73 @@ interface ReservationRecommendationProperties {
   netSavings?: number;
 }
 
-interface ReservationRecommendation {
+export interface ReservationRecommendation {
   properties?: ReservationRecommendationProperties;
 }
 
 interface ReservationRecommendationsResponse {
   value: ReservationRecommendation[];
-}
-
-interface VmssHardwareProfile {
-  virtualMachineProfile?: { hardwareProfile?: { vmSize?: string } };
-}
-
-function vmssVmSize(resource: ResourceGraphRow): string | undefined {
-  const properties = resource.properties as VmssHardwareProfile;
-  return properties.virtualMachineProfile?.hardwareProfile?.vmSize;
+  nextLink?: string | null;
 }
 
 /**
- * Checks whether Azure's own reservation-recommendation engine currently suggests buying a
- * Reservation for this VM family/region — a recommendation with recommendedQuantity > 0 means
- * Azure itself sees uncovered on-demand usage there, i.e. no Reservation/Savings Plan already
- * covers it. Schema per Microsoft Learn as of authoring time
- * (`Microsoft.Consumption/reservationRecommendations`, api-version 2024-08-01) — validated
- * live per plan Task 17 Step 5 before this was trusted in production.
+ * Fetches the full subscription-wide reservation-recommendation list, following `nextLink`
+ * until exhausted. Callers that need to check multiple VM sizes/regions (e.g. one scan
+ * covering many VMSS candidates) should call this ONCE per subscription and match against
+ * the result with `matchReservationRecommendation`, rather than re-fetching per candidate.
+ */
+export async function listReservationRecommendations(
+  subscriptionId: string,
+): Promise<ReservationRecommendation[]> {
+  const recommendations: ReservationRecommendation[] = [];
+  let url: string | null =
+    `https://management.azure.com/subscriptions/${subscriptionId}` +
+    `/providers/Microsoft.Consumption/reservationRecommendations` +
+    `?api-version=2024-08-01&$filter=${encodeURIComponent("properties/resourceType eq 'VirtualMachines'")}`;
+
+  while (url) {
+    const response: ReservationRecommendationsResponse =
+      await armFetch<ReservationRecommendationsResponse>(url);
+    recommendations.push(...response.value);
+    url = response.nextLink ?? null;
+  }
+
+  return recommendations;
+}
+
+/**
+ * Pure, synchronous match against an already-fetched recommendation list — a recommendation
+ * with recommendedQuantity > 0 means Azure itself sees uncovered on-demand usage for this VM
+ * family/region, i.e. no Reservation/Savings Plan already covers it. Schema per Microsoft
+ * Learn as of authoring time (`Microsoft.Consumption/reservationRecommendations`, api-version
+ * 2024-08-01) — validated live per plan Task 17 Step 5 before this was trusted in production.
+ */
+export function matchReservationRecommendation(
+  recommendations: ReservationRecommendation[],
+  vmSize: string,
+  region: string,
+): ReservationRecommendation | undefined {
+  return recommendations.find(
+    (rec) =>
+      rec.properties?.location?.toLowerCase() === region.toLowerCase() &&
+      rec.properties?.skuName?.toLowerCase() === vmSize.toLowerCase() &&
+      (rec.properties?.recommendedQuantity ?? 0) > 0,
+  );
+}
+
+/**
+ * Convenience wrapper that fetches the full list and matches in one call. Prefer
+ * `listReservationRecommendations` + `matchReservationRecommendation` directly when checking
+ * more than one VM size/region per scan, to avoid re-fetching the subscription-wide list once
+ * per candidate.
  */
 export async function findReservationRecommendation(
   subscriptionId: string,
   vmSize: string,
   region: string,
 ): Promise<ReservationRecommendation | undefined> {
-  const url =
-    `https://management.azure.com/subscriptions/${subscriptionId}` +
-    `/providers/Microsoft.Consumption/reservationRecommendations` +
-    `?api-version=2024-08-01&$filter=${encodeURIComponent("properties/resourceType eq 'VirtualMachines'")}`;
-
-  const response = await armFetch<ReservationRecommendationsResponse>(url);
-  return response.value.find(
-    (rec) =>
-      rec.properties?.location?.toLowerCase() === region.toLowerCase() &&
-      rec.properties?.skuName?.toLowerCase() === vmSize.toLowerCase() &&
-      (rec.properties?.recommendedQuantity ?? 0) > 0,
-  );
+  const recommendations = await listReservationRecommendations(subscriptionId);
+  return matchReservationRecommendation(recommendations, vmSize, region);
 }
 
 /**
@@ -76,19 +101,8 @@ export async function findReservationRecommendation(
  * at which point this can start returning a real (possibly term-divided) monthly figure.
  */
 export async function estimateReservationCoverageMonthlySavings(
-  subscriptionId: string,
-  resource: ResourceGraphRow | undefined,
+  _subscriptionId: string,
+  _resource: ResourceGraphRow | undefined,
 ): Promise<number | null> {
-  if (!resource) return null;
-  const vmSize = vmssVmSize(resource);
-  const region = resource.location;
-  if (!vmSize || !region) return null;
-
-  try {
-    await findReservationRecommendation(subscriptionId, vmSize, region);
-    return null;
-  } catch (error) {
-    console.error(`Reservation coverage check failed for ${resource.id}`, error);
-    return null;
-  }
+  return null;
 }
