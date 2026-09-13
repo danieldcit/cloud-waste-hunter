@@ -7,6 +7,7 @@ interface RetailPriceItem {
   skuName: string;
   productName: string;
   armRegionName: string;
+  armSkuName: string;
   type: string;
 }
 
@@ -166,6 +167,99 @@ async function estimateVmssCost(resource: ResourceGraphRow): Promise<number> {
   const perInstanceCost = price ? monthlyPriceFromItems([price]) : 0;
   const capacity = resource.sku?.capacity ?? 1;
   return perInstanceCost * capacity;
+}
+
+function isHourlyVmMeter(item: RetailPriceItem): boolean {
+  return item.unitOfMeasure === "1 Hour" && !/cloud\s*services/i.test(item.productName);
+}
+
+async function fetchVmSizePriceCatalog(region: string, vmSize: string): Promise<RetailPriceItem[]> {
+  const items = await queryRetailPrices(
+    `serviceName eq 'Virtual Machines' and armRegionName eq '${escapeODataString(region)}' and armSkuName eq '${escapeODataString(vmSize)}'`,
+  );
+  return items.filter(isHourlyVmMeter);
+}
+
+/**
+ * Average ratio of Spot price to on-demand price across every VM family in a region that
+ * publishes both, used only when the VMSS's own SKU has no Spot meter of its own. Derived
+ * from live regional pricing data rather than a hardcoded "typical Spot discount" constant,
+ * per explicit user direction (see spec §"médias derivadas de dados reais").
+ */
+async function estimateRegionalSpotDiscountRatio(region: string): Promise<number | null> {
+  const items = await queryRetailPrices(
+    `serviceName eq 'Virtual Machines' and armRegionName eq '${escapeODataString(region)}'`,
+  );
+  const hourly = items.filter(isHourlyVmMeter);
+
+  const onDemandBySku = new Map<string, number>();
+  const spotBySku = new Map<string, number>();
+  for (const item of hourly) {
+    if (item.skuName.includes("Low Priority")) continue;
+    if (item.skuName.includes("Spot")) {
+      spotBySku.set(item.armSkuName, item.retailPrice);
+    } else {
+      onDemandBySku.set(item.armSkuName, item.retailPrice);
+    }
+  }
+
+  const ratios: number[] = [];
+  for (const [sku, spotPrice] of spotBySku) {
+    const onDemandPrice = onDemandBySku.get(sku);
+    if (onDemandPrice && onDemandPrice > 0) {
+      ratios.push(spotPrice / onDemandPrice);
+    }
+  }
+
+  if (ratios.length === 0) {
+    return null;
+  }
+  return ratios.reduce((sum, r) => sum + r, 0) / ratios.length;
+}
+
+/**
+ * Estimated monthly saving from moving a Spot-eligible VMSS to Spot pricing. Prefers the
+ * exact Spot meter for this VMSS's own SKU/region; only falls back to the region-wide average
+ * discount ratio (never a fixed percentage) when that exact meter isn't published.
+ */
+export async function estimateVmssSpotMonthlySavings(
+  resource: ResourceGraphRow,
+): Promise<number | null> {
+  const vmSize = vmssVmSize(resource);
+  if (!vmSize) return null;
+  const region = resource.location ?? "eastus";
+  const capacity = resource.sku?.capacity ?? 1;
+  const wantsWindows = isWindowsVmss(resource);
+
+  try {
+    const items = await fetchVmSizePriceCatalog(region, vmSize);
+    const onDemandItem = items.find(
+      (item) =>
+        !item.skuName.includes("Spot") &&
+        !item.skuName.includes("Low Priority") &&
+        item.productName.includes("Windows") === wantsWindows,
+    );
+    const spotItem = items.find(
+      (item) => item.skuName.includes("Spot") && item.productName.includes("Windows") === wantsWindows,
+    );
+
+    if (onDemandItem && spotItem) {
+      const delta = monthlyPriceFromItems([onDemandItem]) - monthlyPriceFromItems([spotItem]);
+      if (delta > 0) {
+        return delta * capacity;
+      }
+    }
+
+    if (onDemandItem) {
+      const ratio = await estimateRegionalSpotDiscountRatio(region);
+      if (ratio !== null) {
+        return monthlyPriceFromItems([onDemandItem]) * (1 - ratio) * capacity;
+      }
+    }
+  } catch (error) {
+    console.error(`VMSS Spot savings estimation failed for ${resource.id}`, error);
+  }
+  return null;
 }
 
 /** Used only when retail pricing data for the license delta itself is unavailable. */

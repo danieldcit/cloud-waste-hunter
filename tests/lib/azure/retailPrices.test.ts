@@ -4,6 +4,7 @@ import {
   estimateHybridBenefitMonthlySavings,
   estimateLinuxByolMonthlySavings,
   estimateRetailMonthlyCost,
+  estimateVmssSpotMonthlySavings,
 } from "@/lib/azure/retailPrices";
 
 afterEach(() => {
@@ -275,5 +276,92 @@ describe("estimateLinuxByolMonthlySavings", () => {
 
   it("returns 0 when the resource cost is 0", () => {
     expect(estimateLinuxByolMonthlySavings(0)).toBe(0);
+  });
+});
+
+function spotAwarePriceItem(overrides: PriceItemOverrides & { armSkuName?: string } = {}) {
+  return {
+    ...priceItem(overrides),
+    armSkuName: overrides.armSkuName ?? "Standard_D2_v2",
+  };
+}
+
+describe("estimateVmssSpotMonthlySavings", () => {
+  it("returns the exact Spot-vs-on-demand delta times capacity when both prices exist for the SKU", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          spotAwarePriceItem({
+            retailPrice: 0.146,
+            skuName: "D2 v2",
+            productName: "Virtual Machines Dv2 Series",
+          }),
+          spotAwarePriceItem({
+            retailPrice: 0.03,
+            skuName: "D2 v2 Spot",
+            productName: "Virtual Machines Dv2 Series",
+          }),
+        ]),
+      ),
+    );
+
+    const savings = await estimateVmssSpotMonthlySavings(vmssResource("Standard_D2_v2", 4, "Linux"));
+
+    expect(savings).toBeCloseTo((0.146 - 0.03) * 730 * 4, 5);
+  });
+
+  it("falls back to the regional average Spot discount ratio when no exact Spot price exists for the SKU", async () => {
+    const fetchMock = vi.fn();
+    // First call: exact-SKU query, returns only the on-demand price (no Spot meter for this SKU).
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse([
+        spotAwarePriceItem({
+          retailPrice: 0.2,
+          skuName: "D4 v2",
+          productName: "Virtual Machines Dv2 Series",
+          armSkuName: "Standard_D4_v2",
+        }),
+      ]),
+    );
+    // Second call: region-wide query used to compute the average discount ratio.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse([
+        spotAwarePriceItem({
+          retailPrice: 0.1,
+          skuName: "D2 v2",
+          productName: "Virtual Machines Dv2 Series",
+          armSkuName: "Standard_D2_v2",
+        }),
+        spotAwarePriceItem({
+          retailPrice: 0.04,
+          skuName: "D2 v2 Spot",
+          productName: "Virtual Machines Dv2 Series",
+          armSkuName: "Standard_D2_v2",
+        }),
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const savings = await estimateVmssSpotMonthlySavings(vmssResource("Standard_D4_v2", 2, "Linux"));
+
+    // ratio = 0.04/0.1 = 0.4 -> spot is 40% of on-demand -> savings = onDemand * (1 - 0.4)
+    expect(savings).toBeCloseTo(0.2 * 730 * (1 - 0.4) * 2, 5);
+  });
+
+  it("returns null when the VM size can't be determined", async () => {
+    const resource: ResourceGraphRow = {
+      id: "/subscriptions/sub-1/vmss-1",
+      type: "microsoft.compute/virtualmachinescalesets",
+      subscriptionId: "sub-1",
+      properties: {},
+    };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const savings = await estimateVmssSpotMonthlySavings(resource);
+
+    expect(savings).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
