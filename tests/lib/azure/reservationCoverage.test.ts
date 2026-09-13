@@ -76,7 +76,7 @@ describe("estimateReservationCoverageMonthlySavings", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns the recommendation's netSavings when a match is found", async () => {
+  it("returns null even when a match is found, since the savings unit/scale is unverified", async () => {
     vi.spyOn(armFetchModule, "armFetch").mockResolvedValue({
       value: [
         {
@@ -95,7 +95,7 @@ describe("estimateReservationCoverageMonthlySavings", () => {
       vmssResource("Standard_D2s_v5", "eastus"),
     );
 
-    expect(savings).toBe(80);
+    expect(savings).toBeNull();
   });
 
   it("returns null when the resource is undefined", async () => {

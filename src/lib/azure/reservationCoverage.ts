@@ -52,6 +52,29 @@ export async function findReservationRecommendation(
   );
 }
 
+/**
+ * Deliberately does NOT return `recommendation.properties.netSavings` as a dollar estimate.
+ *
+ * `findReservationRecommendation`'s DETECTION logic is live-validated and safe to rely on: the
+ * live call against a real Azure subscription (Task 17 Step 5) returned 200 OK with the expected
+ * `{ value: [...] }` envelope and no permission error, confirming the endpoint, api-version, and
+ * RBAC assumptions. That's enough for Task 18 to use this module to decide WHETHER to flag a
+ * VMSS as missing reservation coverage.
+ *
+ * What is NOT validated is the semantics of `netSavings` itself: the test subscription had no
+ * VM usage history, so the API only ever returned an empty `value` array — there was no real
+ * recommendation to inspect. Azure reservation terms are commonly 1 or 3 years, and it was not
+ * possible to confirm whether `netSavings` is a MONTHLY figure or a TOTAL-OVER-THE-TERM figure.
+ * Presenting a term-total as "monthly savings" would misstate every dollar figure this path
+ * produces by roughly 12x (1-year term) or 36x (3-year term).
+ *
+ * Following the same discipline as `VM_OUTDATED_SKU_GENERATION` elsewhere in this codebase
+ * ("é mais honesto não estimar do que inventar um número" — it's more honest not to estimate
+ * than to invent a number), this function returns `null` unconditionally for now rather than
+ * guess at the unit. Revisit this once a subscription with real reservation-recommendation data
+ * is available to confirm `netSavings`'s unit/scale against the recommendation's `term` field,
+ * at which point this can start returning a real (possibly term-divided) monthly figure.
+ */
 export async function estimateReservationCoverageMonthlySavings(
   subscriptionId: string,
   resource: ResourceGraphRow | undefined,
@@ -62,8 +85,8 @@ export async function estimateReservationCoverageMonthlySavings(
   if (!vmSize || !region) return null;
 
   try {
-    const recommendation = await findReservationRecommendation(subscriptionId, vmSize, region);
-    return recommendation?.properties?.netSavings ?? null;
+    await findReservationRecommendation(subscriptionId, vmSize, region);
+    return null;
   } catch (error) {
     console.error(`Reservation coverage check failed for ${resource.id}`, error);
     return null;
