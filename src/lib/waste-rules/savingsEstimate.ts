@@ -5,6 +5,7 @@ import {
   estimateHybridBenefitMonthlySavings,
   estimateLinuxByolMonthlySavings,
   estimateVmssSpotMonthlySavings,
+  estimatePremiumDiskDowngradeMonthlySavings,
 } from "@/lib/azure/retailPrices";
 import { getHourlyCpuBelowThreshold } from "@/lib/azure/monitorMetrics";
 import { estimateReservationCoverageMonthlySavings } from "@/lib/azure/reservationCoverage";
@@ -16,6 +17,8 @@ type SavingsMethod =
   | "nonprod_schedule"
   | "spot_delta"
   | "reservation_recommendation"
+  | "premium_disk_delta"
+  | "scaling_window_delta"
   | "unknown";
 
 /** Fraction of hours a VMSS's CPU must sit below this to count toward its "off-hours" savings estimate. */
@@ -48,6 +51,14 @@ const SAVINGS_METHOD_BY_RULE: Record<WasteRuleType, SavingsMethod> = {
   VMSS_SPOT_ELIGIBLE: "spot_delta",
   VMSS_MISSING_SAVINGS_PLAN_OR_RESERVATION: "reservation_recommendation",
   VMSS_OUTDATED_MODEL_INSTANCES: "unknown",
+  AVD_SESSION_HOST_LOW_UTILIZATION: "full_cost",
+  AVD_HOSTPOOL_EXCESS_HOSTS: "unknown",
+  AVD_HOSTPOOL_LOW_DENSITY: "unknown",
+  AVD_SESSION_HOST_PREMIUM_DISK_UNUSED: "premium_disk_delta",
+  AVD_SCALING_PLAN_MISSING: "unknown",
+  AVD_SCALING_PLAN_DISABLED: "unknown",
+  AVD_HOST_RUNNING_OUTSIDE_SCALING_WINDOW: "scaling_window_delta",
+  AVD_PERSONAL_HOST_UNUSED: "full_cost",
 };
 
 /**
@@ -83,6 +94,12 @@ export async function estimateMonthlySavings(
       return resource ? estimateVmssSpotMonthlySavings(resource) : null;
     case "reservation_recommendation":
       return estimateReservationCoverageMonthlySavings(candidate.subscriptionId, resource);
+    case "premium_disk_delta":
+      return resource ? estimatePremiumDiskDowngradeMonthlySavings(resource) : null;
+    case "scaling_window_delta": {
+      const offPeakHoursPerDay = candidate.metricObserved ?? 0;
+      return estimatedMonthlyCost * (offPeakHoursPerDay / 24);
+    }
     case "unknown":
       return null;
     default: {

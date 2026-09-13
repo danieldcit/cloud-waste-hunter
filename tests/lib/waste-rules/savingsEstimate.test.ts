@@ -6,6 +6,7 @@ vi.mock("@/lib/azure/retailPrices", () => ({
   estimateHybridBenefitMonthlySavings: vi.fn(),
   estimateLinuxByolMonthlySavings: vi.fn(),
   estimateVmssSpotMonthlySavings: vi.fn(),
+  estimatePremiumDiskDowngradeMonthlySavings: vi.fn(),
 }));
 vi.mock("@/lib/azure/monitorMetrics", () => ({
   getHourlyCpuBelowThreshold: vi.fn(),
@@ -18,6 +19,7 @@ import {
   estimateHybridBenefitMonthlySavings,
   estimateLinuxByolMonthlySavings,
   estimateVmssSpotMonthlySavings,
+  estimatePremiumDiskDowngradeMonthlySavings,
 } from "@/lib/azure/retailPrices";
 import { getHourlyCpuBelowThreshold } from "@/lib/azure/monitorMetrics";
 import { estimateReservationCoverageMonthlySavings } from "@/lib/azure/reservationCoverage";
@@ -195,5 +197,93 @@ describe("estimateMonthlySavings", () => {
     const savings = await estimateMonthlySavings(candidate, undefined, 30);
 
     expect(savings).toBeNull();
+  });
+
+  it("returns the full resource cost for AVD_SESSION_HOST_LOW_UTILIZATION", async () => {
+    const candidate: WasteFindingCandidate = {
+      ruleType: "AVD_SESSION_HOST_LOW_UTILIZATION",
+      resourceId: "host-1",
+      subscriptionId: "sub-1",
+    };
+
+    expect(await estimateMonthlySavings(candidate, undefined, 80)).toBe(80);
+  });
+
+  it("returns the full resource cost for AVD_PERSONAL_HOST_UNUSED", async () => {
+    const candidate: WasteFindingCandidate = {
+      ruleType: "AVD_PERSONAL_HOST_UNUSED",
+      resourceId: "host-2",
+      subscriptionId: "sub-1",
+    };
+
+    expect(await estimateMonthlySavings(candidate, undefined, 60)).toBe(60);
+  });
+
+  it.each([
+    "AVD_HOSTPOOL_EXCESS_HOSTS",
+    "AVD_HOSTPOOL_LOW_DENSITY",
+    "AVD_SCALING_PLAN_MISSING",
+    "AVD_SCALING_PLAN_DISABLED",
+  ] as const)("returns null (no fabricated number) for %s", async (ruleType) => {
+    const candidate: WasteFindingCandidate = {
+      ruleType,
+      resourceId: "pool-1",
+      subscriptionId: "sub-1",
+    };
+
+    expect(await estimateMonthlySavings(candidate, undefined, 500)).toBeNull();
+  });
+
+  it("delegates AVD_SESSION_HOST_PREMIUM_DISK_UNUSED to estimatePremiumDiskDowngradeMonthlySavings", async () => {
+    vi.mocked(estimatePremiumDiskDowngradeMonthlySavings).mockResolvedValue(12.5);
+    const resource: ResourceGraphRow = {
+      id: "disk-1",
+      type: "microsoft.compute/disks",
+      subscriptionId: "sub-1",
+      properties: {},
+    };
+    const candidate: WasteFindingCandidate = {
+      ruleType: "AVD_SESSION_HOST_PREMIUM_DISK_UNUSED",
+      resourceId: "disk-1",
+      subscriptionId: "sub-1",
+    };
+
+    const savings = await estimateMonthlySavings(candidate, resource, 20);
+
+    expect(savings).toBe(12.5);
+    expect(estimatePremiumDiskDowngradeMonthlySavings).toHaveBeenCalledWith(resource);
+  });
+
+  it("returns null for AVD_SESSION_HOST_PREMIUM_DISK_UNUSED when no resource is available", async () => {
+    const candidate: WasteFindingCandidate = {
+      ruleType: "AVD_SESSION_HOST_PREMIUM_DISK_UNUSED",
+      resourceId: "disk-1",
+      subscriptionId: "sub-1",
+    };
+
+    expect(await estimateMonthlySavings(candidate, undefined, 20)).toBeNull();
+  });
+
+  it("computes AVD_HOST_RUNNING_OUTSIDE_SCALING_WINDOW savings from metricObserved as a fraction of 24 hours", async () => {
+    const candidate: WasteFindingCandidate = {
+      ruleType: "AVD_HOST_RUNNING_OUTSIDE_SCALING_WINDOW",
+      resourceId: "host-3",
+      subscriptionId: "sub-1",
+      metricObserved: 12,
+    };
+
+    const savings = await estimateMonthlySavings(candidate, undefined, 240);
+
+    expect(savings).toBeCloseTo(240 * (12 / 24), 5);
+  });
+
+  it("treats a missing metricObserved as 0 hours for AVD_HOST_RUNNING_OUTSIDE_SCALING_WINDOW", async () => {
+    const candidate: WasteFindingCandidate = {
+      ruleType: "AVD_HOST_RUNNING_OUTSIDE_SCALING_WINDOW",
+      resourceId: "host-3",
+      subscriptionId: "sub-1",
+    };
+
+    expect(await estimateMonthlySavings(candidate, undefined, 240)).toBe(0);
   });
 });
