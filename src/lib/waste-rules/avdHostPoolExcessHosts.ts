@@ -27,6 +27,9 @@ export function findAvdHostPoolExcessHosts(
         (sum, h) => sum + ((h.properties as SessionHostProperties).sessions ?? 0),
         0,
       );
+      if (totalSessions === 0) {
+        return false;
+      }
       return totalCapacity >= totalSessions * CAPACITY_TO_USAGE_RATIO_THRESHOLD;
     })
     .map((pool) => ({

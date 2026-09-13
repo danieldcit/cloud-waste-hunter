@@ -68,4 +68,14 @@ describe("findAvdHostPoolExcessHosts", () => {
   it("does not flag a pool with no session hosts", () => {
     expect(findAvdHostPoolExcessHosts([hostPool(POOL_ID, "Pooled", 10)])).toEqual([]);
   });
+
+  it("does not flag a pool with zero total sessions (nobody logged in at scan time is not a sizing signal)", () => {
+    const resources = [
+      hostPool(POOL_ID, "Pooled", 10),
+      sessionHost(`${POOL_ID}/sessionHosts/h1`, 0),
+      sessionHost(`${POOL_ID}/sessionHosts/h2`, 0),
+    ]; // capacity = 20, sessions = 0 — the pre-fix formula (20 >= 0) would have flagged this.
+
+    expect(findAvdHostPoolExcessHosts(resources)).toEqual([]);
+  });
 });

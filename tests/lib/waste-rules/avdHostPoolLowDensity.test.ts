@@ -72,4 +72,14 @@ describe("findAvdHostPoolLowDensity", () => {
 
     expect(findAvdHostPoolLowDensity(resources)).toEqual([]);
   });
+
+  it("does not flag a pool with zero total sessions (nobody logged in at scan time is not a density signal)", () => {
+    const resources = [
+      hostPool(POOL_ID, "Pooled", 10),
+      sessionHost(`${POOL_ID}/sessionHosts/h1`, 0),
+      sessionHost(`${POOL_ID}/sessionHosts/h2`, 0),
+    ]; // average = 0, 30% of 10 = 3 — the pre-fix formula (0 < 3) would have flagged this.
+
+    expect(findAvdHostPoolLowDensity(resources)).toEqual([]);
+  });
 });

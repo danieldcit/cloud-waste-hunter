@@ -28,6 +28,9 @@ export function findAvdHostPoolLowDensity(
         (sum, h) => sum + ((h.properties as SessionHostProperties).sessions ?? 0),
         0,
       );
+      if (totalSessions === 0) {
+        return false;
+      }
       const averageSessions = totalSessions / availableHosts.length;
       return averageSessions < maxSessionLimit * LOW_DENSITY_RATIO_THRESHOLD;
     })
