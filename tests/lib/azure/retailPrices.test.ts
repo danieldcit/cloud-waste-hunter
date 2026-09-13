@@ -630,4 +630,16 @@ describe("estimatePremiumDiskDowngradeMonthlySavings", () => {
 
     expect(savings).toBeNull();
   });
+
+  it("returns null immediately for UltraSSD_LRS without calling fetch (Ultra isn't tier-priced)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const savings = await estimatePremiumDiskDowngradeMonthlySavings(
+      diskResource("UltraSSD_LRS", 128),
+    );
+
+    expect(savings).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

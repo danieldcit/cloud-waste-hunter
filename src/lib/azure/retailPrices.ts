@@ -148,6 +148,13 @@ async function estimateDiskCost(resource: ResourceGraphRow): Promise<number> {
 export async function estimatePremiumDiskDowngradeMonthlySavings(
   resource: ResourceGraphRow,
 ): Promise<number | null> {
+  if (resource.sku?.name === "UltraSSD_LRS") {
+    // Ultra Disk is priced by configured IOPS/throughput, not a fixed size tier —
+    // diskSkuMeterName's tier-name lookup doesn't apply to it, and reusing it here would price
+    // against the wrong family entirely. Detection rules may still flag Ultra disks; this
+    // function just refuses to fabricate a number for them.
+    return null;
+  }
   try {
     const premiumCost = await estimateDiskCost(resource);
     const standardEquivalent: ResourceGraphRow = {
