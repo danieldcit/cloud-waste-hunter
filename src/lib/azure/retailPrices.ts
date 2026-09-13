@@ -58,18 +58,71 @@ function monthlyPriceFromItems(items: RetailPriceItem[]): number {
   return 0;
 }
 
-/** Managed Disk SKU name (e.g. "Standard_LRS") -> Retail Prices skuName tier prefix (e.g. "S4") for a given size. */
-function diskSkuMeterName(skuName: string | undefined, sizeGb: number): string | undefined {
+interface DiskTierBand {
+  maxSizeGb: number;
+  tier: number;
+}
+
+/**
+ * Premium SSD (P) and Standard SSD (E) share this size -> tier-number ladder. Azure's tier
+ * numbering is sparse (1, 2, 3, 4, 6, 10, 15, 20, 30, 40, 50, 60, 70, 80), not sequential —
+ * verified live against the real Retail Prices API on 2026-09-13 (the `skuName` values it
+ * actually returns for "Premium SSD Managed Disks" and "Standard SSD Managed Disks"). A prior
+ * version of this table used `ceil(log2(sizeGb / 4)) + 1` as a sequential tier number, which
+ * silently mispriced every disk ≥ 64 GiB: some sizes mapped to a real-but-wrong-sized tier name
+ * (e.g. a 2048 GiB disk priced as the much cheaper 128 GiB "P10"), others mapped to a tier name
+ * that doesn't exist at all (P5, P7, P8, P9, P11+), which the Retail Prices API silently returns
+ * zero rows for — read as a fabricated $0 cost, not an error.
+ */
+const PREMIUM_STANDARD_SSD_TIER_LADDER: DiskTierBand[] = [
+  { maxSizeGb: 4, tier: 1 },
+  { maxSizeGb: 8, tier: 2 },
+  { maxSizeGb: 16, tier: 3 },
+  { maxSizeGb: 32, tier: 4 },
+  { maxSizeGb: 64, tier: 6 },
+  { maxSizeGb: 128, tier: 10 },
+  { maxSizeGb: 256, tier: 15 },
+  { maxSizeGb: 512, tier: 20 },
+  { maxSizeGb: 1024, tier: 30 },
+  { maxSizeGb: 2048, tier: 40 },
+  { maxSizeGb: 4096, tier: 50 },
+  { maxSizeGb: 8192, tier: 60 },
+  { maxSizeGb: 16384, tier: 70 },
+  { maxSizeGb: 32767, tier: 80 },
+];
+
+/** Standard HDD (S) uses a different ladder that starts at S4 — there is no S1, S2, or S3. */
+const STANDARD_HDD_TIER_LADDER: DiskTierBand[] = [
+  { maxSizeGb: 32, tier: 4 },
+  { maxSizeGb: 64, tier: 6 },
+  { maxSizeGb: 128, tier: 10 },
+  { maxSizeGb: 256, tier: 15 },
+  { maxSizeGb: 512, tier: 20 },
+  { maxSizeGb: 1024, tier: 30 },
+  { maxSizeGb: 2048, tier: 40 },
+  { maxSizeGb: 4096, tier: 50 },
+  { maxSizeGb: 8192, tier: 60 },
+  { maxSizeGb: 16384, tier: 70 },
+  { maxSizeGb: 32767, tier: 80 },
+];
+
+/** Smallest band whose capacity covers `sizeGb` (disks always round up to the next tier); clamps to the largest published tier for anything beyond it. */
+function diskTierNumber(ladder: DiskTierBand[], sizeGb: number): number {
+  const band = ladder.find((b) => sizeGb <= b.maxSizeGb);
+  return (band ?? ladder[ladder.length - 1]).tier;
+}
+
+/** Managed Disk SKU name (e.g. "Standard_LRS") -> Retail Prices skuName tier prefix (e.g. "S4 LRS") for a given size. */
+export function diskSkuMeterName(skuName: string | undefined, sizeGb: number): string {
   const family = (skuName ?? "Standard_LRS").startsWith("Premium")
     ? "P"
     : (skuName ?? "").includes("StandardSSD")
       ? "E"
       : "S";
   const redundancy = (skuName ?? "").endsWith("ZRS") ? "ZRS" : "LRS";
-  // Standard tiers snap to fixed sizes: 4, 8, 16, 32, 64, 128, 256, 512, 1024...
-  const tierIndex = Math.max(0, Math.ceil(Math.log2(Math.max(sizeGb, 1) / 4)));
-  const tierNumber = tierIndex + 1;
-  return `${family}${tierNumber} ${redundancy}`;
+  const ladder = family === "S" ? STANDARD_HDD_TIER_LADDER : PREMIUM_STANDARD_SSD_TIER_LADDER;
+  const tier = diskTierNumber(ladder, Math.max(sizeGb, 1));
+  return `${family}${tier} ${redundancy}`;
 }
 
 async function estimateDiskCost(resource: ResourceGraphRow): Promise<number> {
@@ -77,7 +130,6 @@ async function estimateDiskCost(resource: ResourceGraphRow): Promise<number> {
   const sizeGb = Number(resource.properties.diskSizeGB) || 32;
   const skuName = resource.sku?.name;
   const meterSkuName = diskSkuMeterName(skuName, sizeGb);
-  if (!meterSkuName) return 0;
 
   const isSnapshot = resource.type.toLowerCase() === "microsoft.compute/snapshots";
   const productFilter = isSnapshot ? "contains(productName, 'Snapshots')" : "contains(productName, 'Disks')";

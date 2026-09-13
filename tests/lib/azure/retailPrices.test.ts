@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResourceGraphRow } from "@/lib/azure/resourceGraph";
 import {
+  diskSkuMeterName,
   estimateHybridBenefitMonthlySavings,
   estimateLinuxByolMonthlySavings,
   estimatePremiumDiskDowngradeMonthlySavings,
@@ -61,6 +62,61 @@ function priceItem(overrides: PriceItemOverrides = {}) {
 function jsonResponse(items: unknown[]) {
   return { ok: true, json: async () => ({ Items: items }) };
 }
+
+describe("diskSkuMeterName", () => {
+  // Azure's managed-disk tier numbering is sparse (1, 2, 3, 4, 6, 10, 15, 20, 30, 40, 50, 60,
+  // 70, 80) — not sequential — verified live against the real Retail Prices API on 2026-09-13
+  // (skuName values returned for Premium SSD / Standard SSD / Standard HDD Managed Disks).
+  it.each([
+    [4, "P1 LRS"],
+    [8, "P2 LRS"],
+    [16, "P3 LRS"],
+    [32, "P4 LRS"],
+    [64, "P6 LRS"],
+    [128, "P10 LRS"],
+    [256, "P15 LRS"],
+    [512, "P20 LRS"],
+    [1024, "P30 LRS"],
+    [2048, "P40 LRS"],
+    [4096, "P50 LRS"],
+    [8192, "P60 LRS"],
+    [16384, "P70 LRS"],
+    [32767, "P80 LRS"],
+  ])("maps a %i GiB Premium_LRS disk to %s", (sizeGb, expected) => {
+    expect(diskSkuMeterName("Premium_LRS", sizeGb)).toBe(expected);
+  });
+
+  it("rounds a size between two Premium tiers up to the next tier (100 GiB -> P10, not P6)", () => {
+    expect(diskSkuMeterName("Premium_LRS", 100)).toBe("P10 LRS");
+  });
+
+  it("uses the E prefix and the same ladder as Premium for StandardSSD_LRS", () => {
+    expect(diskSkuMeterName("StandardSSD_LRS", 128)).toBe("E10 LRS");
+    expect(diskSkuMeterName("StandardSSD_LRS", 2048)).toBe("E40 LRS");
+  });
+
+  it("uses ZRS redundancy when the SKU name ends in ZRS", () => {
+    expect(diskSkuMeterName("Premium_ZRS", 128)).toBe("P10 ZRS");
+  });
+
+  it.each([
+    [4, "S4 LRS"],
+    [32, "S4 LRS"],
+    [64, "S6 LRS"],
+    [128, "S10 LRS"],
+    [2048, "S40 LRS"],
+    [32767, "S80 LRS"],
+  ])(
+    "maps a %i GiB Standard_LRS (HDD) disk to %s (S-tier ladder starts at S4, no S1/S2/S3)",
+    (sizeGb, expected) => {
+      expect(diskSkuMeterName("Standard_LRS", sizeGb)).toBe(expected);
+    },
+  );
+
+  it("clamps a size larger than the largest published tier to P80", () => {
+    expect(diskSkuMeterName("Premium_LRS", 65536)).toBe("P80 LRS");
+  });
+});
 
 describe("estimateHybridBenefitMonthlySavings", () => {
   it("sends a single armSkuName-based query, never using the OData 'not' operator the live API rejects", async () => {
@@ -482,22 +538,23 @@ describe("estimateVmssSpotMonthlySavings", () => {
 
 describe("estimatePremiumDiskDowngradeMonthlySavings", () => {
   it("returns the monthly delta between the Premium price and the Standard SSD equivalent", async () => {
+    // 128 GiB is real Azure tier P10/E10 (verified live) — P6/E6 is 64 GiB.
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
       const decoded = decodeURIComponent(url);
-      if (decoded.includes("skuName eq 'P6 LRS'")) {
+      if (decoded.includes("skuName eq 'P10 LRS'")) {
         return jsonResponse([
           priceItem({
             retailPrice: 0.283,
-            meterName: "P6 LRS Disk",
+            meterName: "P10 LRS Disk",
             productName: "Premium SSD Managed Disks",
           }),
         ]);
       }
-      if (decoded.includes("skuName eq 'E6 LRS'")) {
+      if (decoded.includes("skuName eq 'E10 LRS'")) {
         return jsonResponse([
           priceItem({
             retailPrice: 0.096,
-            meterName: "E6 LRS Disk",
+            meterName: "E10 LRS Disk",
             productName: "Standard SSD Managed Disks",
           }),
         ]);
@@ -511,6 +568,41 @@ describe("estimatePremiumDiskDowngradeMonthlySavings", () => {
     );
 
     expect(savings).toBeCloseTo((0.283 - 0.096) * 730, 5);
+  });
+
+  it("prices a 2048 GiB Premium disk against P40, not the pre-fix bug's P10 (~16x underpricing)", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      const decoded = decodeURIComponent(url);
+      if (decoded.includes("skuName eq 'P40 LRS'")) {
+        return jsonResponse([
+          priceItem({
+            retailPrice: 4.522,
+            meterName: "P40 LRS Disk",
+            productName: "Premium SSD Managed Disks",
+          }),
+        ]);
+      }
+      if (decoded.includes("skuName eq 'E40 LRS'")) {
+        return jsonResponse([
+          priceItem({
+            retailPrice: 1.161,
+            meterName: "E40 LRS Disk",
+            productName: "Standard SSD Managed Disks",
+          }),
+        ]);
+      }
+      // Pre-fix, a 2048 GiB disk was priced against "P10 LRS" — if that URL is ever hit again,
+      // this branch's absence (falling through to []) makes the bug's return value 0 instead of
+      // silently reappearing as a plausible-looking number.
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const savings = await estimatePremiumDiskDowngradeMonthlySavings(
+      diskResource("Premium_LRS", 2048),
+    );
+
+    expect(savings).toBeCloseTo((4.522 - 1.161) * 730, 5);
   });
 
   it("returns null when the delta is not positive", async () => {
