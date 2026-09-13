@@ -41,3 +41,24 @@ describe("VMSS category-2 rule labels", () => {
     }
   });
 });
+
+describe("AVD category-3 rule labels", () => {
+  const avdRuleKeys = [
+    "rule.AVD_SESSION_HOST_LOW_UTILIZATION",
+    "rule.AVD_HOSTPOOL_EXCESS_HOSTS",
+    "rule.AVD_HOSTPOOL_LOW_DENSITY",
+    "rule.AVD_SESSION_HOST_PREMIUM_DISK_UNUSED",
+    "rule.AVD_SCALING_PLAN_MISSING",
+    "rule.AVD_SCALING_PLAN_DISABLED",
+    "rule.AVD_HOST_RUNNING_OUTSIDE_SCALING_WINDOW",
+    "rule.AVD_PERSONAL_HOST_UNUSED",
+  ];
+
+  it("has a real translation (not a key fallback) for every AVD rule key in every locale", () => {
+    for (const locale of LOCALES) {
+      for (const key of avdRuleKeys) {
+        expect(translate(locale, key)).not.toBe(key);
+      }
+    }
+  });
+});
