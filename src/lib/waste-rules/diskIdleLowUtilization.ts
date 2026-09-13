@@ -20,7 +20,7 @@ const IOPS_SEVERITY_TIERS: IopsSeverityTier[] = [
 
 export async function findDiskIdleLowUtilization(
   resources: ResourceGraphRow[],
-  getAverageIops: (resourceId: string, days: number) => Promise<number> = getAverageDiskIops,
+  getAverageIops: (resourceId: string, days: number) => Promise<number | null> = getAverageDiskIops,
 ): Promise<WasteFindingCandidate[]> {
   const disks = resources.filter(
     (r) =>
@@ -35,6 +35,9 @@ export async function findDiskIdleLowUtilization(
       getAverageIops(disk.id, 60),
       getAverageIops(disk.id, 90),
     ]);
+    if (iops30 === null || iops60 === null || iops90 === null) {
+      continue;
+    }
     const iopsByWindow = new Map<number, number>([
       [30, iops30],
       [60, iops60],

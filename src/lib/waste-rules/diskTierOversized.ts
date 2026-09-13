@@ -9,10 +9,13 @@ const WINDOW_DAYS = 30;
 
 export async function findDiskTierOversized(
   resources: ResourceGraphRow[],
-  getAverageIops: (resourceId: string, days: number) => Promise<number> = getAverageDiskIops,
+  getAverageIops: (resourceId: string, days: number) => Promise<number | null> = getAverageDiskIops,
 ): Promise<WasteFindingCandidate[]> {
   const disks = resources.filter(
-    (r) => r.type.toLowerCase() === "microsoft.compute/disks" && PREMIUM_SKUS.has(r.sku?.name ?? ""),
+    (r) =>
+      r.type.toLowerCase() === "microsoft.compute/disks" &&
+      r.properties.diskState === "Attached" &&
+      PREMIUM_SKUS.has(r.sku?.name ?? ""),
   );
 
   const candidates: WasteFindingCandidate[] = [];
@@ -23,6 +26,9 @@ export async function findDiskTierOversized(
     }
     const maxIops = maxIopsForPremiumDiskSize(sizeGb);
     const avgIops = await getAverageIops(disk.id, WINDOW_DAYS);
+    if (avgIops === null) {
+      continue;
+    }
     if (avgIops < maxIops * UNDERUSED_RATIO_THRESHOLD) {
       candidates.push({
         ruleType: "DISK_TIER_OVERSIZED",

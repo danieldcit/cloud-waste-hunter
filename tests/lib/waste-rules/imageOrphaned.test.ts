@@ -42,7 +42,7 @@ describe("findImageOrphaned", () => {
         ruleType: "IMAGE_ORPHANED",
         resourceId: IMAGE_ID,
         subscriptionId: "sub-1",
-        savingsCategory: "HARD_SAVING",
+        savingsCategory: "POTENTIAL_SAVING",
       },
     ]);
   });

@@ -60,6 +60,16 @@ describe("findDiskIdleLowUtilization", () => {
     expect(await findDiskIdleLowUtilization(resources, getAverageIops)).toEqual([]);
   });
 
+  it("does not flag a disk when any of the 3 windows returns null (no metric data)", async () => {
+    const getAverageIops = vi.fn().mockImplementation(async (_id: string, days: number) => {
+      if (days === 30) return null;
+      return 0.2;
+    });
+    const resources = [disk("/subscriptions/sub-1/disks/disk-5")];
+
+    expect(await findDiskIdleLowUtilization(resources, getAverageIops)).toEqual([]);
+  });
+
   it("does not evaluate an Unattached disk (already covered by ORPHANED_DISK)", async () => {
     const getAverageIops = vi.fn();
     const resources = [disk("/subscriptions/sub-1/disks/disk-4", "Unattached")];

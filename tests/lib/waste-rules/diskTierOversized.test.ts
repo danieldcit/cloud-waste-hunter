@@ -2,13 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 import type { ResourceGraphRow } from "@/lib/azure/resourceGraph";
 import { findDiskTierOversized } from "@/lib/waste-rules/diskTierOversized";
 
-function premiumDisk(id: string, sizeGb: number, skuName = "Premium_LRS"): ResourceGraphRow {
+function premiumDisk(
+  id: string,
+  sizeGb: number,
+  skuName = "Premium_LRS",
+  diskState = "Attached",
+): ResourceGraphRow {
   return {
     id,
     type: "microsoft.compute/disks",
     subscriptionId: "sub-1",
     sku: { name: skuName },
-    properties: { diskState: "Attached", diskSizeGB: sizeGb },
+    properties: { diskState, diskSizeGB: sizeGb },
   };
 }
 
@@ -49,6 +54,21 @@ describe("findDiskTierOversized", () => {
   it("does not evaluate UltraSSD_LRS (not a fixed size tier)", async () => {
     const getAverageIops = vi.fn();
     const resources = [premiumDisk("/subscriptions/sub-1/disks/disk-4", 1024, "UltraSSD_LRS")];
+
+    expect(await findDiskTierOversized(resources, getAverageIops)).toEqual([]);
+    expect(getAverageIops).not.toHaveBeenCalled();
+  });
+
+  it("skips a disk when getAverageIops resolves null (no metric data)", async () => {
+    const getAverageIops = vi.fn().mockResolvedValue(null);
+    const resources = [premiumDisk("/subscriptions/sub-1/disks/disk-5", 1024)];
+
+    expect(await findDiskTierOversized(resources, getAverageIops)).toEqual([]);
+  });
+
+  it("does not evaluate an Unattached Premium disk (already covered by ORPHANED_DISK)", async () => {
+    const getAverageIops = vi.fn();
+    const resources = [premiumDisk("/subscriptions/sub-1/disks/disk-6", 1024, "Premium_LRS", "Unattached")];
 
     expect(await findDiskTierOversized(resources, getAverageIops)).toEqual([]);
     expect(getAverageIops).not.toHaveBeenCalled();

@@ -129,14 +129,29 @@ describe("getAverageDiskIops", () => {
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
-  it("returns 0 when there are no data points for either metric", async () => {
+  it("returns null when there are no data points for either metric", async () => {
     vi.spyOn(armFetchModule, "armFetch").mockResolvedValue({
       value: [{ timeseries: [{ data: [] }] }],
     });
 
     const iops = await getAverageDiskIops("/subscriptions/sub-1/disks/disk-1");
 
-    expect(iops).toBe(0);
+    expect(iops).toBeNull();
+  });
+
+  it("sums the real value with 0 when only one metric has data", async () => {
+    vi.spyOn(armFetchModule, "armFetch").mockImplementation(async (url: string) => {
+      if (url.includes("Read%20Operations")) {
+        return {
+          value: [{ timeseries: [{ data: [{ timeStamp: "2026-09-01T00:00:00Z", average: 4 }] }] }],
+        };
+      }
+      return { value: [{ timeseries: [{ data: [] }] }] };
+    });
+
+    const iops = await getAverageDiskIops("/subscriptions/sub-1/disks/disk-1");
+
+    expect(iops).toBe(4);
   });
 
   it("queries the exact lowercase metric names confirmed live against the real API", async () => {

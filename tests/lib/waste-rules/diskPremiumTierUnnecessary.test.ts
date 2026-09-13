@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { ResourceGraphRow } from "@/lib/azure/resourceGraph";
 import { findDiskPremiumTierUnnecessary } from "@/lib/waste-rules/diskPremiumTierUnnecessary";
 
-function disk(id: string, skuName: string): ResourceGraphRow {
+function disk(id: string, skuName: string, diskState = "Attached"): ResourceGraphRow {
   return {
     id,
     type: "microsoft.compute/disks",
     subscriptionId: "sub-1",
     sku: { name: skuName },
-    properties: { diskState: "Attached" },
+    properties: { diskState },
   };
 }
 
@@ -44,6 +44,21 @@ describe("findDiskPremiumTierUnnecessary", () => {
   it("does not flag a Standard disk", async () => {
     const getAverageIops = vi.fn().mockResolvedValue(1);
     const resources = [disk("/subscriptions/sub-1/disks/disk-3", "Standard_LRS")];
+
+    expect(await findDiskPremiumTierUnnecessary(resources, getAverageIops)).toEqual([]);
+    expect(getAverageIops).not.toHaveBeenCalled();
+  });
+
+  it("skips a disk when getAverageIops resolves null (no metric data)", async () => {
+    const getAverageIops = vi.fn().mockResolvedValue(null);
+    const resources = [disk("/subscriptions/sub-1/disks/disk-4", "Premium_LRS")];
+
+    expect(await findDiskPremiumTierUnnecessary(resources, getAverageIops)).toEqual([]);
+  });
+
+  it("does not evaluate an Unattached Premium disk (already covered by ORPHANED_DISK)", async () => {
+    const getAverageIops = vi.fn();
+    const resources = [disk("/subscriptions/sub-1/disks/disk-5", "Premium_LRS", "Unattached")];
 
     expect(await findDiskPremiumTierUnnecessary(resources, getAverageIops)).toEqual([]);
     expect(getAverageIops).not.toHaveBeenCalled();

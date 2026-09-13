@@ -36,6 +36,6 @@ export function findImageOrphaned(resources: ResourceGraphRow[]): WasteFindingCa
       ruleType: "IMAGE_ORPHANED" as const,
       resourceId: r.id,
       subscriptionId: r.subscriptionId,
-      savingsCategory: "HARD_SAVING" as const,
+      savingsCategory: "POTENTIAL_SAVING" as const,
     }));
 }

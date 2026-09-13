@@ -291,8 +291,6 @@ describe("estimateMonthlySavings", () => {
     "DISK_IDLE_LOW_UTILIZATION",
     "SNAPSHOT_ORPHANED_SOURCE",
     "SNAPSHOT_EXCESSIVE_COUNT",
-    "IMAGE_ORPHANED",
-    "GALLERY_IMAGE_VERSION_OLD",
   ] as const)("returns the full resource cost for %s", async (ruleType) => {
     const candidate: WasteFindingCandidate = {
       ruleType,
@@ -303,7 +301,12 @@ describe("estimateMonthlySavings", () => {
     expect(await estimateMonthlySavings(candidate, undefined, 42)).toBe(42);
   });
 
-  it.each(["DISK_PREMIUM_V2_OVERSIZED", "DISK_TIER_OVERSIZED"] as const)(
+  it.each([
+    "DISK_PREMIUM_V2_OVERSIZED",
+    "DISK_TIER_OVERSIZED",
+    "IMAGE_ORPHANED",
+    "GALLERY_IMAGE_VERSION_OLD",
+  ] as const)(
     "returns null (no fabricated number) for %s",
     async (ruleType) => {
       const candidate: WasteFindingCandidate = {

@@ -55,6 +55,14 @@ describe("findSnapshotOrphanedSource", () => {
     expect(findSnapshotOrphanedSource(resources)).toEqual([]);
   });
 
+  it("does not flag a snapshot whose source is another snapshot (Copy/CopyStart), even if that snapshot isn't present", () => {
+    const resources = [
+      snapshot("/subscriptions/sub-1/snapshots/snap-4", "/subscriptions/sub-1/snapshots/snap-missing-source"),
+    ];
+
+    expect(findSnapshotOrphanedSource(resources)).toEqual([]);
+  });
+
   it("ignores non-snapshot resources", () => {
     expect(findSnapshotOrphanedSource([disk(EXISTING_DISK_ID)])).toEqual([]);
   });

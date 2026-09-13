@@ -66,8 +66,8 @@ const SAVINGS_METHOD_BY_RULE: Record<WasteRuleType, SavingsMethod> = {
   DISK_NONPROD_PREMIUM: "premium_disk_delta",
   SNAPSHOT_ORPHANED_SOURCE: "full_cost",
   SNAPSHOT_EXCESSIVE_COUNT: "full_cost",
-  IMAGE_ORPHANED: "full_cost",
-  GALLERY_IMAGE_VERSION_OLD: "full_cost",
+  IMAGE_ORPHANED: "unknown",
+  GALLERY_IMAGE_VERSION_OLD: "unknown",
 };
 
 /**
