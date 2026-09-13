@@ -63,6 +63,17 @@ describe("COMBINED_QUERY resource types", () => {
       ]),
     );
   });
+
+  it("includes the AVD category-3 resource types", async () => {
+    const { COMBINED_QUERY_TYPES } = await import("@/lib/scanner/runScan");
+    expect(COMBINED_QUERY_TYPES).toEqual(
+      expect.arrayContaining([
+        "microsoft.desktopvirtualization/hostpools",
+        "microsoft.desktopvirtualization/hostpools/sessionhosts",
+        "microsoft.desktopvirtualization/scalingplans",
+      ]),
+    );
+  });
 });
 
 describe("runScan", () => {

@@ -40,6 +40,9 @@ export const COMBINED_QUERY_TYPES = [
   "microsoft.compute/virtualmachinescalesets",
   "microsoft.compute/virtualmachinescalesets/virtualmachines",
   "microsoft.insights/autoscalesettings",
+  "microsoft.desktopvirtualization/hostpools",
+  "microsoft.desktopvirtualization/hostpools/sessionhosts",
+  "microsoft.desktopvirtualization/scalingplans",
 ];
 
 const COMBINED_QUERY = `
