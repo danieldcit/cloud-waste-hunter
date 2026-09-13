@@ -62,3 +62,25 @@ describe("AVD category-3 rule labels", () => {
     }
   });
 });
+
+describe("Disk category-4 rule labels", () => {
+  const diskRuleKeys = [
+    "rule.DISK_IDLE_LOW_UTILIZATION",
+    "rule.DISK_PREMIUM_TIER_UNNECESSARY",
+    "rule.DISK_PREMIUM_V2_OVERSIZED",
+    "rule.DISK_TIER_OVERSIZED",
+    "rule.DISK_NONPROD_PREMIUM",
+    "rule.SNAPSHOT_ORPHANED_SOURCE",
+    "rule.SNAPSHOT_EXCESSIVE_COUNT",
+    "rule.IMAGE_ORPHANED",
+    "rule.GALLERY_IMAGE_VERSION_OLD",
+  ];
+
+  it("has a real translation (not a key fallback) for every disk rule key in every locale", () => {
+    for (const locale of LOCALES) {
+      for (const key of diskRuleKeys) {
+        expect(translate(locale, key)).not.toBe(key);
+      }
+    }
+  });
+});
