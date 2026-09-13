@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireCustomerId } from "@/lib/tenant";
 import { armFetch } from "@/lib/azure/armFetch";
 import { runScan } from "@/lib/scanner/runScan";
+import { getGrantedRoleIds } from "@/lib/azure/lighthouseAssignment";
 
 interface RegistrationAssignmentListResponse {
   value: { id: string }[];
@@ -51,9 +52,23 @@ export async function POST(
     }
   }
 
+  let grantedRoleIds: string[] | undefined;
+  try {
+    grantedRoleIds = await getGrantedRoleIds(subscription.azureSubscriptionId);
+  } catch (error) {
+    console.error(
+      `Failed to read granted Lighthouse roles for subscription ${subscription.id}`,
+      error,
+    );
+  }
+
   const updated = await prisma.subscription.update({
     where: { id: subscription.id },
-    data: { status: "CONNECTED", connectedAt: new Date() },
+    data: {
+      status: "CONNECTED",
+      connectedAt: new Date(),
+      ...(grantedRoleIds ? { grantedRoleIds } : {}),
+    },
   });
 
   runScan(updated.id).catch((error) => {
