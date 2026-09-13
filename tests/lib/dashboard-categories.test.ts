@@ -33,6 +33,22 @@ describe("categoryForRule", () => {
       expect(categoryForRule(ruleType)).toBe("compute");
     }
   });
+
+  it("maps every AVD category-3 rule to compute", () => {
+    const avdRuleTypes = [
+      "AVD_SESSION_HOST_LOW_UTILIZATION",
+      "AVD_HOSTPOOL_EXCESS_HOSTS",
+      "AVD_HOSTPOOL_LOW_DENSITY",
+      "AVD_SESSION_HOST_PREMIUM_DISK_UNUSED",
+      "AVD_SCALING_PLAN_MISSING",
+      "AVD_SCALING_PLAN_DISABLED",
+      "AVD_HOST_RUNNING_OUTSIDE_SCALING_WINDOW",
+      "AVD_PERSONAL_HOST_UNUSED",
+    ] as const;
+    for (const ruleType of avdRuleTypes) {
+      expect(categoryForRule(ruleType)).toBe("compute");
+    }
+  });
 });
 
 describe("impactForCost", () => {

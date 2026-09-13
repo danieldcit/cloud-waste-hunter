@@ -22,6 +22,14 @@ const CATEGORY_BY_RULE: Record<WasteRuleType, DashboardCategory> = {
   VMSS_SPOT_ELIGIBLE: "compute",
   VMSS_MISSING_SAVINGS_PLAN_OR_RESERVATION: "compute",
   VMSS_OUTDATED_MODEL_INSTANCES: "compute",
+  AVD_SESSION_HOST_LOW_UTILIZATION: "compute",
+  AVD_HOSTPOOL_EXCESS_HOSTS: "compute",
+  AVD_HOSTPOOL_LOW_DENSITY: "compute",
+  AVD_SESSION_HOST_PREMIUM_DISK_UNUSED: "compute",
+  AVD_SCALING_PLAN_MISSING: "compute",
+  AVD_SCALING_PLAN_DISABLED: "compute",
+  AVD_HOST_RUNNING_OUTSIDE_SCALING_WINDOW: "compute",
+  AVD_PERSONAL_HOST_UNUSED: "compute",
 };
 
 export function categoryForRule(ruleType: WasteRuleType): DashboardCategory {
