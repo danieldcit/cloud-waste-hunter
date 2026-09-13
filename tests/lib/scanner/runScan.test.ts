@@ -964,4 +964,57 @@ describe("runScan", () => {
     expect(findings[0].resourceId).toBe("/subscriptions/sub-avd-2/hostPools/pool-2");
     expect(findings[0].estimatedMonthlySavings).toBeNull();
   });
+
+  it("prices an AVD session host finding against its underlying VM, not the (unbilled) session-host id", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-avd-cost", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-avd-cost", displayName: "Prod" },
+    });
+
+    const hostId =
+      "/subscriptions/sub-avd-cost/hostPools/pool-cost/sessionHosts/host-1.contoso.com";
+    const vmId = "/subscriptions/sub-avd-cost/virtualMachines/host-1";
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: hostId,
+        type: "microsoft.desktopvirtualization/hostpools/sessionhosts",
+        subscriptionId: "sub-avd-cost",
+        properties: { sessions: 0, status: "Available", resourceId: vmId },
+      },
+      {
+        id: vmId,
+        type: "microsoft.compute/virtualmachines",
+        subscriptionId: "sub-avd-cost",
+        properties: { hardwareProfile: { vmSize: "Standard_D2s_v5" } },
+      },
+    ]);
+    // Nothing is billed under the session host's own id — this is what production returns.
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(0);
+    vi.mocked(estimateRetailMonthlyCost).mockResolvedValue(75);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    expect(estimateRetailMonthlyCost).toHaveBeenCalledWith(
+      expect.objectContaining({ id: vmId, type: "microsoft.compute/virtualmachines" }),
+    );
+
+    const findings = await prisma.wasteFinding.findMany({
+      where: {
+        subscriptionId: subscription.id,
+        ruleType: "AVD_SESSION_HOST_LOW_UTILIZATION",
+      },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      resourceId: hostId,
+      estimatedMonthlyCost: 75,
+      estimatedMonthlySavings: 75,
+    });
+  });
 });

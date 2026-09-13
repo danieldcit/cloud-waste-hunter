@@ -34,6 +34,7 @@ import { findAvdScalingPlanMissing } from "@/lib/waste-rules/avdScalingPlanMissi
 import { findAvdScalingPlanDisabled } from "@/lib/waste-rules/avdScalingPlanDisabled";
 import { findAvdHostRunningOutsideScalingWindow } from "@/lib/waste-rules/avdHostRunningOutsideScalingWindow";
 import { findAvdPersonalHostUnused } from "@/lib/waste-rules/avdPersonalHostUnused";
+import { isSessionHost, underlyingVm } from "@/lib/waste-rules/avdSessionHosts";
 import { estimateMonthlySavings } from "@/lib/waste-rules/savingsEstimate";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
 
@@ -108,6 +109,22 @@ async function captureCostSnapshot(
       error,
     );
   }
+}
+
+/**
+ * AVD session hosts carry no billing of their own — Cost Management and the
+ * retail-price catalog both price the underlying VM. Resolves the resource
+ * that should actually be priced for cost/savings estimation, without
+ * changing what resourceId a finding points at.
+ */
+function resolveCostResource(
+  resource: ResourceGraphRow | undefined,
+  resources: ResourceGraphRow[],
+): ResourceGraphRow | undefined {
+  if (resource && isSessionHost(resource)) {
+    return underlyingVm(resource, resources) ?? resource;
+  }
+  return resource;
 }
 
 export async function runScan(subscriptionRecordId: string): Promise<void> {
@@ -212,11 +229,14 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
     );
 
     for (const candidate of candidates) {
+      const resource = resourceById.get(candidate.resourceId);
+      const costResource = resolveCostResource(resource, resources);
+
       let estimatedMonthlyCost = 0;
       try {
         estimatedMonthlyCost = await estimateMonthlyCost(
           subscription.azureSubscriptionId,
-          candidate.resourceId,
+          costResource?.id ?? candidate.resourceId,
         );
       } catch (error) {
         console.error(
@@ -225,24 +245,21 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         );
       }
 
-      if (estimatedMonthlyCost === 0) {
-        const resource = resourceById.get(candidate.resourceId);
-        if (resource) {
-          try {
-            estimatedMonthlyCost = await estimateRetailMonthlyCost(resource);
-          } catch (error) {
-            console.error(
-              `Retail price fallback failed for resource ${candidate.resourceId} (rule ${candidate.ruleType}); using 0`,
-              error,
-            );
-          }
+      if (estimatedMonthlyCost === 0 && costResource) {
+        try {
+          estimatedMonthlyCost = await estimateRetailMonthlyCost(costResource);
+        } catch (error) {
+          console.error(
+            `Retail price fallback failed for resource ${candidate.resourceId} (rule ${candidate.ruleType}); using 0`,
+            error,
+          );
         }
       }
       let estimatedMonthlySavings: number | null = null;
       try {
         estimatedMonthlySavings = await estimateMonthlySavings(
           candidate,
-          resourceById.get(candidate.resourceId),
+          resource,
           estimatedMonthlyCost,
         );
       } catch (error) {
