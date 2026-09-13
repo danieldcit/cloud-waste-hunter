@@ -3,6 +3,7 @@ import type { ResourceGraphRow } from "@/lib/azure/resourceGraph";
 import {
   estimateHybridBenefitMonthlySavings,
   estimateLinuxByolMonthlySavings,
+  estimatePremiumDiskDowngradeMonthlySavings,
   estimateRetailMonthlyCost,
   estimateVmssSpotMonthlySavings,
 } from "@/lib/azure/retailPrices";
@@ -21,6 +22,17 @@ function vmResource(vmSize: string, osType?: "Windows" | "Linux"): ResourceGraph
       hardwareProfile: { vmSize },
       ...(osType ? { storageProfile: { osDisk: { osType } } } : {}),
     },
+  };
+}
+
+function diskResource(skuName: string, sizeGb: number): ResourceGraphRow {
+  return {
+    id: "/subscriptions/sub-1/disks/disk-1",
+    type: "microsoft.compute/disks",
+    subscriptionId: "sub-1",
+    location: "eastus",
+    sku: { name: skuName },
+    properties: { diskSizeGB: sizeGb },
   };
 }
 
@@ -465,5 +477,65 @@ describe("estimateVmssSpotMonthlySavings", () => {
     // Linux (0.05/0.1 = 0.5) -> 0.375. A colliding bare-armSkuName key would instead
     // overwrite down to a single (wrong) ratio of 0.5.
     expect(savings).toBeCloseTo(1.0 * 730 * (1 - 0.375), 5);
+  });
+});
+
+describe("estimatePremiumDiskDowngradeMonthlySavings", () => {
+  it("returns the monthly delta between the Premium price and the Standard SSD equivalent", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      const decoded = decodeURIComponent(url);
+      if (decoded.includes("skuName eq 'P6 LRS'")) {
+        return jsonResponse([
+          priceItem({
+            retailPrice: 0.283,
+            meterName: "P6 LRS Disk",
+            productName: "Premium SSD Managed Disks",
+          }),
+        ]);
+      }
+      if (decoded.includes("skuName eq 'E6 LRS'")) {
+        return jsonResponse([
+          priceItem({
+            retailPrice: 0.096,
+            meterName: "E6 LRS Disk",
+            productName: "Standard SSD Managed Disks",
+          }),
+        ]);
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const savings = await estimatePremiumDiskDowngradeMonthlySavings(
+      diskResource("Premium_LRS", 128),
+    );
+
+    expect(savings).toBeCloseTo((0.283 - 0.096) * 730, 5);
+  });
+
+  it("returns null when the delta is not positive", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse([priceItem({ retailPrice: 0.1 })])),
+    );
+
+    const savings = await estimatePremiumDiskDowngradeMonthlySavings(
+      diskResource("Premium_LRS", 128),
+    );
+
+    expect(savings).toBeNull();
+  });
+
+  it("returns null when a price lookup throws", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("network error")),
+    );
+
+    const savings = await estimatePremiumDiskDowngradeMonthlySavings(
+      diskResource("Premium_LRS", 128),
+    );
+
+    expect(savings).toBeNull();
   });
 });

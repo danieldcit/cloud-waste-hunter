@@ -88,6 +88,29 @@ async function estimateDiskCost(resource: ResourceGraphRow): Promise<number> {
   return monthlyPriceFromItems(items.filter((i) => !i.meterName.includes("Mount")));
 }
 
+/**
+ * Estimated monthly saving from downgrading a Premium/Ultra managed disk to the Standard SSD
+ * tier at the same size/region: the retail-price delta between the two, using the same
+ * `estimateDiskCost` path (and its `diskSkuMeterName` size-banding) with the SKU swapped.
+ */
+export async function estimatePremiumDiskDowngradeMonthlySavings(
+  resource: ResourceGraphRow,
+): Promise<number | null> {
+  try {
+    const premiumCost = await estimateDiskCost(resource);
+    const standardEquivalent: ResourceGraphRow = {
+      ...resource,
+      sku: { ...resource.sku, name: "StandardSSD_LRS" },
+    };
+    const standardCost = await estimateDiskCost(standardEquivalent);
+    const delta = premiumCost - standardCost;
+    return delta > 0 ? delta : null;
+  } catch (error) {
+    console.error(`Premium disk downgrade savings estimation failed for ${resource.id}`, error);
+    return null;
+  }
+}
+
 async function estimatePublicIpCost(resource: ResourceGraphRow): Promise<number> {
   const region = resource.location ?? "eastus";
   const skuName = resource.sku?.name ?? "Basic";
