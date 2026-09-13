@@ -84,9 +84,12 @@ export function AmbientesClient({
       return;
     }
 
+    const data = await response.json();
     setSubscriptions((current) =>
       current.map((s) =>
-        s.id === subscriptionRowId ? { ...s, status: "CONNECTED" } : s,
+        s.id === subscriptionRowId
+          ? { ...s, status: "CONNECTED", needsPermissionUpgrade: data.needsPermissionUpgrade }
+          : s,
       ),
     );
     setVerifyMessageBySubscription((current) => {
@@ -197,7 +200,9 @@ export function AmbientesClient({
       </form>
 
       <ul className="space-y-4">
-        {subscriptions.map((s) => (
+        {subscriptions.map((s) => {
+          const showUpgradePrompt = s.status === "CONNECTED" && s.needsPermissionUpgrade;
+          return (
           <li key={s.id} className="border rounded p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -209,13 +214,13 @@ export function AmbientesClient({
                   {" · "}
                   {t("ambientes.lastScan")}: {s.lastScanAt ?? t("ambientes.neverScanned")}
                 </p>
-                {s.status === "CONNECTED" && s.needsPermissionUpgrade && (
+                {showUpgradePrompt && (
                   <p className="mt-1 text-sm text-amber-600">
                     {t("ambientes.permissionsOutdated")}
                   </p>
                 )}
               </div>
-              {(s.status === "PENDING" || (s.status === "CONNECTED" && s.needsPermissionUpgrade)) && (
+              {(s.status === "PENDING" || showUpgradePrompt) && (
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -229,7 +234,7 @@ export function AmbientesClient({
                     className="bg-blue-600 text-white rounded px-3 py-1 hover:bg-blue-700"
                     onClick={() => handleVerify(s.id)}
                   >
-                    {s.needsPermissionUpgrade && s.status === "CONNECTED"
+                    {showUpgradePrompt
                       ? t("ambientes.updatePermissions")
                       : t("ambientes.verify")}
                   </button>
@@ -255,7 +260,8 @@ export function AmbientesClient({
               </p>
             )}
           </li>
-        ))}
+          );
+        })}
       </ul>
     </main>
   );

@@ -4,6 +4,7 @@ import { requireCustomerId } from "@/lib/tenant";
 import { armFetch } from "@/lib/azure/armFetch";
 import { runScan } from "@/lib/scanner/runScan";
 import { getGrantedRoleIds } from "@/lib/azure/lighthouseAssignment";
+import { needsPermissionUpgrade } from "@/lib/azure/lighthouseRoles";
 
 interface RegistrationAssignmentListResponse {
   value: { id: string }[];
@@ -75,5 +76,8 @@ export async function POST(
     console.error(`Initial scan failed for subscription ${updated.id}`, error);
   });
 
-  return NextResponse.json({ status: updated.status });
+  return NextResponse.json({
+    status: updated.status,
+    needsPermissionUpgrade: needsPermissionUpgrade(updated.grantedRoleIds),
+  });
 }

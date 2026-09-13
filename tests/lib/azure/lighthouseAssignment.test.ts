@@ -67,12 +67,12 @@ describe("getGrantedRoleIds", () => {
     expect(await getGrantedRoleIds("sub-1")).toEqual([]);
   });
 
-  it("returns an empty array when the expanded definition has no authorizations", async () => {
+  it("throws when assignments exist but no authorizations resolve (response-shape mismatch)", async () => {
     vi.spyOn(armFetchModule, "armFetch").mockResolvedValue({
       value: [{ properties: { registrationDefinitionId: "def-1" } }],
     });
 
-    expect(await getGrantedRoleIds("sub-1")).toEqual([]);
+    await expect(getGrantedRoleIds("sub-1")).rejects.toThrow();
   });
 
   it("queries with $expand=registrationDefinition", async () => {

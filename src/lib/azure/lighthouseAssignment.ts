@@ -39,5 +39,15 @@ export async function getGrantedRoleIds(azureSubscriptionId: string): Promise<st
       roleIds.add(auth.roleDefinitionId);
     }
   }
+
+  if (result.value.length > 0 && roleIds.size === 0) {
+    throw new Error(
+      "getGrantedRoleIds: registration assignments exist but no roles resolved from " +
+        "$expand=registrationDefinition — the response shape likely doesn't match what this " +
+        "function assumes (see the function's doc comment). Refusing to persist an empty role " +
+        "set as ground truth.",
+    );
+  }
+
   return [...roleIds];
 }
