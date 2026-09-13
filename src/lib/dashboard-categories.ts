@@ -12,6 +12,16 @@ const CATEGORY_BY_RULE: Record<WasteRuleType, DashboardCategory> = {
   VM_MISSING_LINUX_BYOL: "compute",
   VM_OUTDATED_SKU_GENERATION: "compute",
   VM_STOPPED_RETAINING_RESOURCES: "compute",
+  VMSS_NO_AUTOSCALE: "compute",
+  VMSS_MAX_INSTANCES_HIGH: "compute",
+  VMSS_AUTOSCALE_NO_SCALE_IN: "compute",
+  VMSS_IDLE_LOW_UTILIZATION: "compute",
+  VMSS_SCALEOUT_METRIC_INADEQUATE: "compute",
+  VMSS_NONPROD_NO_SCHEDULE: "compute",
+  VMSS_OUTDATED_SKU_GENERATION: "compute",
+  VMSS_SPOT_ELIGIBLE: "compute",
+  VMSS_MISSING_SAVINGS_PLAN_OR_RESERVATION: "compute",
+  VMSS_OUTDATED_MODEL_INSTANCES: "compute",
 };
 
 export function categoryForRule(ruleType: WasteRuleType): DashboardCategory {
