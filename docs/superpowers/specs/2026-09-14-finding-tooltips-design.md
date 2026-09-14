@@ -190,13 +190,19 @@ export async function getMaxDiskIops(
 }
 ```
 
-**Não validado ao vivo:** a suposição de que a API de métricas retorna o campo `maximum` (em vez
-de `average`) quando `aggregation=Maximum` é pedido é a leitura padrão da documentação do Azure
-Monitor, mas nunca foi testada contra uma chamada real neste projeto — diferente da API de SKUs
-(seção 1), que foi. **Ação exigida na implementação:** validar isso com uma chamada real (mesmo
-padrão de validação ao vivo já usado nas métricas de IOPS da Categoria 4) antes de confiar no
-valor; se o campo vier com outro nome, ajustar `getMetricStatistic` e documentar o achado, não
-assumir silenciosamente.
+**Validado ao vivo para CPU, durante a investigação que originou este documento:** a chamada real
+contra `VM-AGENT-DEVOPS-01` (`Percentage CPU`, `aggregation=Maximum`, `interval=P1D`, 30 dias,
+subscription `b81be4a8-71ca-4090-8acb-266bf51ee316`) confirmou o campo `"maximum"` na resposta
+(ex.: `{"timeStamp":"2026-08-16T16:09:00Z","maximum":99.22}`) — é o mesmo dado que revelou os
+picos de ~99% que motivaram este documento inteiro. `getMetricStatistic`/`getMaxCpuPercent` podem
+confiar nesse nome de campo para `Percentage CPU`.
+
+**Ainda não validado ao vivo:** o mesmo para `Composite Disk Read/Write Operations/sec` com
+`aggregation=Maximum` — só a agregação `Average` desses dois nomes de métrica foi confirmada ao
+vivo (Categoria 4). É razoável assumir o mesmo padrão de campo (`maximum`), mas **ação exigida na
+implementação de `getMaxDiskIops`:** confirmar com uma chamada real contra um disco de verdade
+antes de confiar no valor: se o campo vier com outro nome, ajustar `getMetricStatistic` e
+documentar o achado, não assumir silenciosamente.
 
 ## 5. Motor de sugestão — VM/VMSS
 
