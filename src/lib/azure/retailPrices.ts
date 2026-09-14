@@ -125,7 +125,7 @@ export function diskSkuMeterName(skuName: string | undefined, sizeGb: number): s
   return `${family}${tier} ${redundancy}`;
 }
 
-async function estimateDiskCost(resource: ResourceGraphRow): Promise<number> {
+export async function estimateDiskCost(resource: ResourceGraphRow): Promise<number> {
   const region = resource.location ?? "eastus";
   const sizeGb = Number(resource.properties.diskSizeGB) || 32;
   const skuName = resource.sku?.name;
@@ -228,6 +228,21 @@ function isWindowsVm(resource: ResourceGraphRow): boolean {
 async function estimateVmCost(resource: ResourceGraphRow): Promise<number> {
   const items = await fetchVmPriceItems(resource);
   const wantsWindows = isWindowsVm(resource);
+  const price = items.find((item) => item.productName.includes("Windows") === wantsWindows);
+  return price ? monthlyPriceFromItems([price]) : 0;
+}
+
+/**
+ * Prices a specific VM size directly (not read from a resource) — used by the resize-suggestion
+ * engine to price *candidate* SKUs that don't exist as an actual resource. Same Windows/Linux
+ * meter selection as `estimateVmCost`, reusing the same `fetchVmPriceItemsForSize` helper.
+ */
+export async function estimateVmSkuMonthlyCost(
+  region: string,
+  vmSize: string,
+  wantsWindows: boolean,
+): Promise<number> {
+  const items = await fetchVmPriceItemsForSize(region, vmSize);
   const price = items.find((item) => item.productName.includes("Windows") === wantsWindows);
   return price ? monthlyPriceFromItems([price]) : 0;
 }

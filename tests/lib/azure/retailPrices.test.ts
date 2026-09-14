@@ -6,6 +6,7 @@ import {
   estimateLinuxByolMonthlySavings,
   estimatePremiumDiskDowngradeMonthlySavings,
   estimateRetailMonthlyCost,
+  estimateVmSkuMonthlyCost,
   estimateVmssSpotMonthlySavings,
 } from "@/lib/azure/retailPrices";
 
@@ -641,5 +642,38 @@ describe("estimatePremiumDiskDowngradeMonthlySavings", () => {
 
     expect(savings).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("estimateVmSkuMonthlyCost", () => {
+  it("prices the Linux/base meter when wantsWindows is false", async () => {
+    const mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        Items: [
+          {
+            retailPrice: 0.096,
+            unitOfMeasure: "1 Hour",
+            meterName: "D2s v3",
+            skuName: "Standard_D2s_v3",
+            productName: "Virtual Machines Dsv3 Series",
+            armRegionName: "brazilsouth",
+            armSkuName: "Standard_D2s_v3",
+            type: "Consumption",
+          },
+        ],
+      }),
+    });
+    const cost = await estimateVmSkuMonthlyCost("brazilsouth", "Standard_D2s_v3", false);
+    expect(cost).toBeCloseTo(0.096 * 730, 2);
+  });
+
+  it("returns 0 when no matching meter is found", async () => {
+    const mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ Items: [] }) });
+    expect(await estimateVmSkuMonthlyCost("brazilsouth", "Standard_NoSuchSize", false)).toBe(0);
   });
 });
