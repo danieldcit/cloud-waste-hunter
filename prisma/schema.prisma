@@ -126,6 +126,7 @@ enum SavingsCategory {
 enum FindingStatus {
   OPEN
   DISMISSED
+  RESOLVED
 }
 
 model WasteFinding {
@@ -142,6 +143,7 @@ model WasteFinding {
   metricObserved          Float?
   periodAnalyzedDays      Int?
   estimatedMonthlySavings Float?
+  resolvedAt              DateTime?
 
   @@unique([subscriptionId, resourceId, ruleType])
 }
