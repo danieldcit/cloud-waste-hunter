@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { isValidSubscriptionId } from "@/lib/ambientes/validateSubscriptionId";
 import { addManagedClientWithSubscription } from "@/app/ambientes/actions";
-import { ClientSwitcher } from "@/components/ClientSwitcher";
+import { AppHeader } from "@/components/AppHeader";
 
 interface AmbienteRow {
   id: string;
@@ -135,17 +135,16 @@ export function AmbientesClient({
   }
 
   return (
-    <main className="p-6">
-      <header className="mb-6 flex items-center justify-between">
-        <span className="text-lg font-bold">Cloud Waste Hunter</span>
-        <ClientSwitcher
-          myAccountId={operatorCustomerId}
-          myAccountLabel={operatorLabel}
-          activeClientId={activeClientId}
-          managedClients={managedClients}
-        />
-      </header>
+    <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+      <AppHeader
+        activeNav="ambientes"
+        userLabel={operatorLabel}
+        operatorCustomerId={operatorCustomerId}
+        activeClientId={activeClientId}
+        managedClients={managedClients}
+      />
 
+      <main className="p-6">
       <h1 className="text-2xl font-bold mb-4">{t("ambientes.title")}</h1>
 
       <form
@@ -263,6 +262,7 @@ export function AmbientesClient({
           );
         })}
       </ul>
-    </main>
+      </main>
+    </div>
   );
 }

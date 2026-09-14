@@ -2,13 +2,10 @@
 
 import { useMemo, useState } from "react";
 import type { FindingStatus, WasteRuleType } from "@prisma/client";
-import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { categoryForRule, impactForCost, type DashboardCategory } from "@/lib/dashboard-categories";
 import { CostTrendChart } from "@/components/dashboard/CostTrendChart";
-import { signOutAction } from "@/app/dashboard/actions";
-import { ClientSwitcher } from "@/components/ClientSwitcher";
-import type { Locale } from "@/lib/i18n/dictionaries";
+import { AppHeader } from "@/components/AppHeader";
 
 interface FindingRow {
   id: string;
@@ -47,8 +44,7 @@ export function DashboardClient({
   findings: FindingRow[];
   subscriptions: SubscriptionOption[];
 }) {
-  const { theme, toggleTheme } = useTheme();
-  const { locale, setLocale, t } = useLocale();
+  const { t } = useLocale();
   const [categoryFilter, setCategoryFilter] = useState<DashboardCategory | "all">("all");
   const [search, setSearch] = useState("");
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState(
@@ -83,61 +79,14 @@ export function DashboardClient({
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 p-4 dark:border-gray-700">
-        <div className="flex items-center gap-6">
-          <span className="text-lg font-bold">Cloud Waste Hunter</span>
-          <nav className="flex gap-4 text-sm">
-            <span className="font-medium">{t("nav.dashboard")}</span>
-            <span className="font-medium">{t("nav.recommendations")}</span>
-            <a href="/ambientes" className="font-medium hover:underline">
-              {t("nav.ambientes")}
-            </a>
-            <span className="text-gray-400" title={t("nav.comingSoon")}>
-              {t("nav.reports")}
-            </span>
-            <span className="text-gray-400" title={t("nav.comingSoon")}>
-              {t("nav.automation")}
-            </span>
-          </nav>
-        </div>
-        <input
-          type="search"
-          placeholder={t("search.placeholder")}
-          className="rounded border border-gray-300 px-3 py-1 text-sm dark:border-gray-600 dark:bg-gray-800"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <div className="flex items-center gap-3 text-sm">
-          <ClientSwitcher
-            myAccountId={operatorCustomerId}
-            myAccountLabel={userLabel}
-            activeClientId={activeClientId}
-            managedClients={managedClients}
-          />
-          <span>{userLabel}</span>
-          <select
-            value={locale}
-            onChange={(e) => setLocale(e.target.value as Locale)}
-            className="rounded border border-gray-300 px-2 py-1 dark:border-gray-600 dark:bg-gray-800"
-          >
-            <option value="pt-BR">pt-BR</option>
-            <option value="en">en</option>
-            <option value="es">es</option>
-          </select>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="rounded border border-gray-300 px-2 py-1 dark:border-gray-600"
-          >
-            {theme === "light" ? "🌙" : "☀️"}
-          </button>
-          <form action={signOutAction}>
-            <button type="submit" className="rounded border border-gray-300 px-2 py-1 dark:border-gray-600">
-              {t("account.signOut")}
-            </button>
-          </form>
-        </div>
-      </header>
+      <AppHeader
+        activeNav="dashboard"
+        userLabel={userLabel}
+        operatorCustomerId={operatorCustomerId}
+        activeClientId={activeClientId}
+        managedClients={managedClients}
+        search={{ value: search, onChange: setSearch }}
+      />
 
       <main className="p-6">
         {subscriptions.length > 1 && (
