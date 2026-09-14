@@ -17,9 +17,18 @@ sub-projetos separados como a Categoria 5/Relatórios foram):
 
 1. **Tooltip explicativa em todas as 36 regras**, no Painel e em Recomendações: o que foi
    detectado, em linguagem clara, citando a métrica real quando ela existir.
-2. **Sugestão de redimensionamento calculada de verdade** (não só texto genérico) para as 5
-   regras de dimensionamento: `IDLE_VM`, `VMSS_IDLE_LOW_UTILIZATION`, `DISK_TIER_OVERSIZED`,
-   `DISK_PREMIUM_TIER_UNNECESSARY`, `DISK_PREMIUM_V2_OVERSIZED`.
+2. **Sugestão de redimensionamento calculada de verdade** (não só texto genérico) para 4 regras
+   de dimensionamento, em 3 categorias distintas (corrigido durante o brainstorming — a leitura
+   inicial de "5 regras, mesmo motor" estava errada, ver §6):
+   - `IDLE_VM`, `VMSS_IDLE_LOW_UTILIZATION`: motor novo de SKU (§5).
+   - `DISK_TIER_OVERSIZED`: motor novo de tier de disco (§6) — é a regra que hoje fica com
+     `estimatedMonthlySavings: null` por falta de "alvo" (decisão da Categoria 4); este documento
+     fecha essa lacuna.
+   - `DISK_PREMIUM_TIER_UNNECESSARY`: **não precisa de motor novo** — já tem economia calculada
+     desde a Categoria 4 (`estimatePremiumDiskDowngradeMonthlySavings`); só formata o
+     `suggestedActionSummary` a partir do valor que já existe.
+   - `DISK_PREMIUM_V2_OVERSIZED` **sai da lista de sugestão calculada** (ver §6) — fica só com a
+     explicação por IA, igual às outras 31 regras.
 
 ### Validado ao vivo antes deste documento
 
@@ -53,8 +62,11 @@ sub-projetos separados como a Categoria 5/Relatórios foram):
 6. **`src/lib/waste-rules/diskTierSuggestion.ts`** (novo) — motor de sugestão para disco,
    reaproveitando `premiumDiskTiers.ts` e a função de preço por tier que a Categoria 4 já
    integrou em `retailPrices.ts`.
-7. **`runScan.ts`**: para as 5 regras de dimensionamento, chama o motor correspondente depois do
-   candidato ser detectado e grava `suggestedActionSummary` no upsert.
+7. **`runScan.ts`**: `IDLE_VM`/`VMSS_IDLE_LOW_UTILIZATION` chamam `suggestVmSku`;
+   `DISK_TIER_OVERSIZED` chama `suggestDiskTier`; `DISK_PREMIUM_TIER_UNNECESSARY` formata seu
+   `estimatedMonthlySavings` já existente direto em texto — nenhuma chamada Azure nova. Todos os
+   três (mais o `tooltipExplanation` da seção 7, que roda pra qualquer regra) gravam no mesmo
+   `upsert` do candidato.
 8. **`src/lib/ai/findingExplainer.ts`** (novo) — gera a explicação da tooltip via **Claude Haiku
    4.5** (`@anthropic-ai/sdk`, novo — projeto não tinha integração de IA antes deste documento),
    grounded exclusivamente nos fatos já calculados (regra, métrica, `suggestedActionSummary`
@@ -248,21 +260,28 @@ export function findSafeVmSkuCandidates(
 }
 ```
 
-**Orquestração (async, em `runScan.ts` ou num orquestrador dedicado no mesmo módulo):** para cada
+**Orquestração (`src/lib/waste-rules/vmSkuSuggestion.ts`, função `suggestVmSku`):** para cada
 candidato `IDLE_VM`/`VMSS_IDLE_LOW_UTILIZATION`, busca `peakCpuPercent` via `getMaxCpuPercent`,
 lista os SKUs da região via `listVmSkusForRegion` (uma chamada por região por scan, não por VM —
-cachear dentro do scan), filtra com `findSafeVmSkuCandidates`, consulta o preço via Retail Prices
-**só dos 3 primeiros candidatos** (menor vCPU primeiro — limita as chamadas de preço por VM),
-escolhe o mais barato confirmado. Se qualquer etapa falhar (`peakCpuPercent` null, lista de SKUs
-vazia, nenhum candidato seguro, todos os preços falharem), `suggestedActionSummary` fica `null`.
+cachear dentro do scan), filtra com `findSafeVmSkuCandidates`, consulta o preço via
+`retailPrices.ts` **só dos 3 primeiros candidatos** (menor vCPU primeiro — limita as chamadas de
+preço por VM), escolhe o mais barato confirmado. Precifica cada candidato reaproveitando a lógica
+já existente de `estimateVmCost`/`estimateVmssCost` (que hoje leem `vmSize` de um `ResourceGraphRow`
+inteiro) — precisa de uma nova função exportada `estimateVmSkuMonthlyCost(region, vmSize,
+wantsWindows)` em `retailPrices.ts` que aceita o `vmSize` direto (o candidato não é um recurso
+real, só um nome de SKU), reaproveitando o helper privado `fetchVmPriceItemsForSize` que já existe
+no arquivo — mesmo padrão de filtro Windows/Linux que `estimateVmCost` já usa. Se qualquer etapa
+falhar (`peakCpuPercent` null, lista de SKUs vazia, nenhum candidato seguro, todos os preços
+falharem ou não renderem economia positiva), `suggestedActionSummary` fica `null`.
 
 Formato do texto final (pt-BR, fixo): `"Redimensione para {skuName} — economia adicional
 estimada de ${delta}/mês"`.
 
 ## 6. Motor de sugestão — Disco
 
-Mesmo princípio (pico, não média), mas sem chamada Azure nova de listagem — reaproveita a tabela
-já publicada em `premiumDiskTiers.ts`:
+Mesmo princípio de segurança (pico, não média), mas sem chamada Azure nova de listagem —
+reaproveita a tabela já publicada em `premiumDiskTiers.ts`. Só se aplica a `DISK_TIER_OVERSIZED`;
+as outras duas regras de disco não usam este motor (ver a divisão em §2, item 2).
 
 ```ts
 // src/lib/azure/premiumDiskTiers.ts — nova função ao lado de maxIopsForPremiumDiskSize
@@ -274,10 +293,22 @@ export function smallestPremiumDiskSizeForIops(peakIops: number): number {
 }
 ```
 
-`diskTierSuggestion.ts` chama `getMaxDiskIops` (não `getAverageDiskIops`), pega o tamanho sugerido
-via `smallestPremiumDiskSizeForIops`, e precifica a diferença via a função de preço por tier que a
-Categoria 4 já integrou (`estimatePremiumDiskDowngradeMonthlySavings` ou equivalente — reaproveitar
-a existente, não duplicar). `null` se `getMaxDiskIops` retornar `null` ou o preço falhar.
+**Importante: não é o mesmo cálculo de `DISK_PREMIUM_TIER_UNNECESSARY`.** Aquela regra troca de
+família no mesmo tamanho (Premium → StandardSSD), e por isso `estimatePremiumDiskDowngradeMonthlySavings`
+já resolve. `DISK_TIER_OVERSIZED` precisa do oposto: mesma família, tamanho menor — ex. um disco
+Premium P30 (1024 GiB) cujo pico de IOPS caberia num P10 (128 GiB), ainda Premium, só menor. A
+função existente não serve pra isso; a orquestração nova precisa comparar o preço do disco no
+tamanho atual com o preço do disco no tamanho sugerido, mesma família.
+
+`estimateDiskCost` (privada em `retailPrices.ts`, usada por `estimatePremiumDiskDowngradeMonthlySavings`
+internamente) já faz exatamente "precificar um `ResourceGraphRow` de disco pelo seu tamanho/família
+atual" — precisa só virar `export` pra ser reaproveitada aqui, sem duplicar a lógica de
+`diskSkuMeterName`. `diskTierSuggestion.ts` chama `getMaxDiskIops` (não `getAverageDiskIops`),
+calcula o tamanho sugerido via `smallestPremiumDiskSizeForIops`, monta um `ResourceGraphRow`
+sintético com `properties.diskSizeGB` trocado pelo tamanho sugerido (mesmo truque que
+`estimatePremiumDiskDowngradeMonthlySavings` já usa pra trocar `sku.name`), precifica os dois
+tamanhos via `estimateDiskCost` e retorna a diferença. `null` se `getMaxDiskIops` retornar `null`,
+o tamanho sugerido não for menor que o atual, ou qualquer chamada de preço falhar.
 
 ## 7. Explicação gerada por IA — todas as 36 regras
 
@@ -376,14 +407,22 @@ sem tooltip enriquecida) e, numa linha própria, `suggestedActionSummary` verbat
   array vazio quando nada é seguro.
 - `smallestPremiumDiskSizeForIops`: pura — espelha os testes existentes de
   `maxIopsForPremiumDiskSize`, incluindo o clamp no maior tier publicado.
+- `suggestVmSku`: dependências injetadas mockadas (mesmo padrão de `findIdleVirtualMachines`) —
+  casos: pico `null` → `null`; nenhum candidato seguro → `null`; candidato seguro mas todos os
+  preços falham → `null`; caminho feliz retorna o mais barato confirmado, não necessariamente o
+  primeiro da lista.
+- `suggestDiskTier`: mesmo padrão — pico `null` → `null`; tamanho sugerido igual ou maior que o
+  atual → `null` (não é uma redução real); caminho feliz retorna a diferença de preço mesma
+  família, tamanhos diferentes.
 - `buildFactsPrompt`: pura, sem rede — casos: com métrica, sem métrica, com/sem
   `suggestedActionSummary`, nunca omite um fato presente.
 - `explainFinding`: `@anthropic-ai/sdk` mockado (mesmo padrão de `vi.mock` já usado pra
   `@azure/identity`/Resource Graph em `runScan.test.ts`) — casos: `ANTHROPIC_API_KEY` ausente →
   `null` sem chamar o SDK; chamada com sucesso → retorna o texto; chamada lançando erro → `null`,
   não propaga a exceção.
-- `runScan.ts` (integração): candidato de uma das 5 regras ganha `suggestedActionSummary`
-  quando o motor encontra um candidato seguro; fica `null` quando a métrica de pico falha, quando
+- `runScan.ts` (integração): candidato de `IDLE_VM`/`VMSS_IDLE_LOW_UTILIZATION`/`DISK_TIER_OVERSIZED`
+  ganha `suggestedActionSummary` quando o motor encontra um candidato seguro; fica `null` quando a
+  métrica de pico falha, quando
   a listagem de SKUs falha, ou quando nenhum candidato seguro existe. `tooltipExplanation` fica
   `null` no ambiente de teste (sem `ANTHROPIC_API_KEY` setada em `.env.test` — decisão deliberada,
   ver §2 "Custo real": a suíte de testes nunca deve fazer uma chamada real à Anthropic).
