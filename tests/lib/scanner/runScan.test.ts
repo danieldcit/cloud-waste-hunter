@@ -318,6 +318,77 @@ describe("runScan", () => {
     expect(updatedFinding.status).toBe("DISMISSED");
   });
 
+  it("closes an OPEN finding whose resource/rule no longer appears in a later scan, marking it RESOLVED with resolvedAt set", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-7", name: "Resolved" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-7", displayName: "Resolved" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "disk-7",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-7",
+        properties: { diskState: "Unattached" },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(9.99);
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, resourceId: "disk-7" },
+    });
+    expect(finding.status).toBe("OPEN");
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([]);
+    await runScan(subscription.id);
+
+    const updatedFinding = await prisma.wasteFinding.findUniqueOrThrow({
+      where: { id: finding.id },
+    });
+    expect(updatedFinding.status).toBe("RESOLVED");
+    expect(updatedFinding.resolvedAt).not.toBeNull();
+  });
+
+  it("does not touch a DISMISSED finding when its resource/rule no longer appears in a later scan", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-8", name: "DismissedThenGone" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-8", displayName: "DismissedThenGone" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "disk-8",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-8",
+        properties: { diskState: "Unattached" },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(9.99);
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, resourceId: "disk-8" },
+    });
+    await prisma.wasteFinding.update({
+      where: { id: finding.id },
+      data: { status: "DISMISSED" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([]);
+    await runScan(subscription.id);
+
+    const updatedFinding = await prisma.wasteFinding.findUniqueOrThrow({
+      where: { id: finding.id },
+    });
+    expect(updatedFinding.status).toBe("DISMISSED");
+    expect(updatedFinding.resolvedAt).toBeNull();
+  });
+
   it("persists an IDLE_VM finding for an idle VM returned by Resource Graph", async () => {
     const customer = await prisma.customer.create({
       data: { entraTenantId: "tenant-vm-1", name: "Acme" },

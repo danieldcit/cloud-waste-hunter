@@ -359,6 +359,21 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       });
     }
 
+    const detectedKeys = new Set(candidates.map((c) => `${c.resourceId}::${c.ruleType}`));
+    const openFindings = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id, status: "OPEN" },
+      select: { id: true, resourceId: true, ruleType: true },
+    });
+    const resolvedIds = openFindings
+      .filter((f) => !detectedKeys.has(`${f.resourceId}::${f.ruleType}`))
+      .map((f) => f.id);
+    if (resolvedIds.length > 0) {
+      await prisma.wasteFinding.updateMany({
+        where: { id: { in: resolvedIds } },
+        data: { status: "RESOLVED", resolvedAt: new Date() },
+      });
+    }
+
     await captureCostSnapshot(subscription.id, subscription.azureSubscriptionId);
 
     await prisma.scanRun.update({
