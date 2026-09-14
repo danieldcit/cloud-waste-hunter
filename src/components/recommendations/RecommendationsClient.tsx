@@ -13,6 +13,8 @@ interface RecommendationRow {
   subscriptionName: string;
   estimatedMonthlyCost: number;
   estimatedMonthlySavings: number | null;
+  tooltipExplanation: string | null;
+  suggestedActionSummary: string | null;
 }
 
 export function RecommendationsClient({
@@ -80,7 +82,15 @@ export function RecommendationsClient({
               <tr key={finding.id} className="border-b border-gray-100 dark:border-gray-800">
                 <td className="p-2">{t(`filters.${categoryForRule(finding.ruleType)}`)}</td>
                 <td className="p-2">{t(`rule.${finding.ruleType}`)}</td>
-                <td className="p-2">{finding.resourceId}</td>
+                <td className="p-2">
+                  <span
+                    title={[finding.tooltipExplanation, finding.suggestedActionSummary]
+                      .filter((line): line is string => line != null)
+                      .join("\n\n")}
+                  >
+                    {finding.resourceId}
+                  </span>
+                </td>
                 <td className="p-2">{finding.subscriptionName}</td>
                 <td className="p-2">${finding.estimatedMonthlyCost.toFixed(2)}</td>
                 <td className="p-2">

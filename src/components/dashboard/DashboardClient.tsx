@@ -15,6 +15,8 @@ interface FindingRow {
   estimatedMonthlyCost: number;
   estimatedMonthlySavings: number | null;
   status: FindingStatus;
+  tooltipExplanation: string | null;
+  suggestedActionSummary: string | null;
 }
 
 interface SubscriptionOption {
@@ -178,7 +180,15 @@ export function DashboardClient({
                 <tr key={finding.id} className="border-b border-gray-100 dark:border-gray-800">
                   <td className="p-2">{t(`filters.${categoryForRule(finding.ruleType)}`)}</td>
                   <td className="p-2">{t(`rule.${finding.ruleType}`)}</td>
-                  <td className="p-2">{finding.resourceId}</td>
+                  <td className="p-2">
+                    <span
+                      title={[finding.tooltipExplanation, finding.suggestedActionSummary]
+                        .filter((line): line is string => line != null)
+                        .join("\n\n")}
+                    >
+                      {finding.resourceId}
+                    </span>
+                  </td>
                   <td className="p-2">{finding.subscriptionName}</td>
                   <td className="p-2">
                     <span

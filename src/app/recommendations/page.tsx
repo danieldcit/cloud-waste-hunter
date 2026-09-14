@@ -29,6 +29,8 @@ export default async function RecommendationsPage() {
         subscriptionName: f.subscription.displayName,
         estimatedMonthlyCost: f.estimatedMonthlyCost,
         estimatedMonthlySavings: f.estimatedMonthlySavings,
+        tooltipExplanation: f.tooltipExplanation,
+        suggestedActionSummary: f.suggestedActionSummary,
       }))}
     />
   );

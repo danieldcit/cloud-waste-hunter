@@ -49,6 +49,8 @@ export default async function DashboardPage() {
         estimatedMonthlyCost: f.estimatedMonthlyCost,
         estimatedMonthlySavings: f.estimatedMonthlySavings,
         status: f.status,
+        tooltipExplanation: f.tooltipExplanation,
+        suggestedActionSummary: f.suggestedActionSummary,
       }))}
       subscriptions={subscriptions.map((s) => ({
         id: s.id,
