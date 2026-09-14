@@ -33,3 +33,14 @@ export function maxIopsForPremiumDiskSize(sizeGb: number): number {
   const band = PREMIUM_DISK_TIER_LADDER.find((b) => sizeGb <= b.maxSizeGb);
   return (band ?? PREMIUM_DISK_TIER_LADDER[PREMIUM_DISK_TIER_LADDER.length - 1]).maxIops;
 }
+
+/**
+ * Smallest published tier whose maxIops covers `peakIops` with the same 70% safety ceiling used
+ * for VM/VMSS sizing (src/lib/waste-rules/vmSkuSuggestion.ts) — never suggests a size whose
+ * capacity the measured peak would exceed.
+ */
+export function smallestPremiumDiskSizeForIops(peakIops: number): number {
+  const target = peakIops / 0.7;
+  const band = PREMIUM_DISK_TIER_LADDER.find((b) => target <= b.maxIops);
+  return (band ?? PREMIUM_DISK_TIER_LADDER[PREMIUM_DISK_TIER_LADDER.length - 1]).maxSizeGb;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { maxIopsForPremiumDiskSize } from "@/lib/azure/premiumDiskTiers";
+import { maxIopsForPremiumDiskSize, smallestPremiumDiskSizeForIops } from "@/lib/azure/premiumDiskTiers";
 
 describe("maxIopsForPremiumDiskSize", () => {
   it.each([
@@ -25,5 +25,20 @@ describe("maxIopsForPremiumDiskSize", () => {
 
   it("clamps a size larger than the largest published tier to P80's capacity", () => {
     expect(maxIopsForPremiumDiskSize(65536)).toBe(20000);
+  });
+});
+
+describe("smallestPremiumDiskSizeForIops", () => {
+  it("returns the smallest tier whose maxIops covers the peak with the 70% safety ceiling", () => {
+    // 128 GiB tier has maxIops 500; 500 * 0.7 = 350 — a peak of 340 fits with margin
+    expect(smallestPremiumDiskSizeForIops(340)).toBe(128);
+  });
+
+  it("clamps to the largest published tier for a peak beyond all bands", () => {
+    expect(smallestPremiumDiskSizeForIops(1_000_000)).toBe(32767);
+  });
+
+  it("returns the smallest tier for a very low peak", () => {
+    expect(smallestPremiumDiskSizeForIops(1)).toBe(32);
   });
 });
