@@ -7,7 +7,7 @@ import { signOutAction } from "@/app/dashboard/actions";
 import { ClientSwitcher } from "@/components/ClientSwitcher";
 import type { Locale } from "@/lib/i18n/dictionaries";
 
-export type ActiveNav = "dashboard" | "recommendations" | "ambientes";
+export type ActiveNav = "dashboard" | "recommendations" | "reports" | "ambientes";
 
 export function AppHeader({
   activeNav,
@@ -38,9 +38,9 @@ export function AppHeader({
           <NavLink href="/recommendations" active={activeNav === "recommendations"}>
             {t("nav.recommendations")}
           </NavLink>
-          <span className="text-gray-400" title={t("nav.comingSoon")}>
+          <NavLink href="/reports" active={activeNav === "reports"}>
             {t("nav.reports")}
-          </span>
+          </NavLink>
           <span className="text-gray-400" title={t("nav.comingSoon")}>
             {t("nav.automation")}
           </span>
