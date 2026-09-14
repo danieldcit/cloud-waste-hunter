@@ -34,6 +34,15 @@ vi.mock("@/lib/azure/reservationCoverage", async (importOriginal) => {
     estimateReservationCoverageMonthlySavings: vi.fn(),
   };
 });
+vi.mock("@/lib/waste-rules/vmSkuSuggestion", () => ({
+  suggestVmSku: vi.fn(),
+}));
+vi.mock("@/lib/waste-rules/diskTierSuggestion", () => ({
+  suggestDiskTier: vi.fn(),
+}));
+vi.mock("@/lib/ai/findingExplainer", () => ({
+  explainFinding: vi.fn(),
+}));
 
 import { queryResourceGraph } from "@/lib/azure/resourceGraph";
 import { estimateMonthlyCost } from "@/lib/azure/costManagement";
@@ -52,6 +61,9 @@ import {
   getSubscriptionForecast,
   getSubscriptionDailyCostTrend,
 } from "@/lib/azure/subscriptionCost";
+import { suggestVmSku } from "@/lib/waste-rules/vmSkuSuggestion";
+import { suggestDiskTier } from "@/lib/waste-rules/diskTierSuggestion";
+import { explainFinding } from "@/lib/ai/findingExplainer";
 import { runScan } from "@/lib/scanner/runScan";
 
 describe("COMBINED_QUERY resource types", () => {
@@ -830,6 +842,80 @@ describe("runScan", () => {
       metricObserved: 2,
       periodAnalyzedDays: 90,
     });
+  });
+
+  it("persists suggestedActionSummary for an IDLE_VM finding when suggestVmSku returns a suggestion", async () => {
+    const customer = await prisma.customer.create({ data: { entraTenantId: "tenant-tt-1", name: "Tooltips" } });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-tt-1", displayName: "Tooltips" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vm-tt-1",
+        type: "microsoft.compute/virtualmachines",
+        subscriptionId: "sub-tt-1",
+        properties: { hardwareProfile: { vmSize: "Standard_D2s_v3" } },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(100);
+    vi.mocked(suggestVmSku).mockResolvedValue({ skuName: "Standard_B2ms", monthlySavings: 42 });
+    vi.mocked(explainFinding).mockResolvedValue(null);
+
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, resourceId: "vm-tt-1", ruleType: "IDLE_VM" },
+    });
+    expect(finding.suggestedActionSummary).toBe(
+      "Redimensione para Standard_B2ms — economia adicional estimada de $42.00/mês",
+    );
+  });
+
+  it("leaves suggestedActionSummary null when suggestVmSku returns null", async () => {
+    const customer = await prisma.customer.create({ data: { entraTenantId: "tenant-tt-2", name: "Tooltips2" } });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-tt-2", displayName: "Tooltips2" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vm-tt-2",
+        type: "microsoft.compute/virtualmachines",
+        subscriptionId: "sub-tt-2",
+        properties: { hardwareProfile: { vmSize: "Standard_D2s_v3" } },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(100);
+    vi.mocked(suggestVmSku).mockResolvedValue(null);
+    vi.mocked(explainFinding).mockResolvedValue(null);
+
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, resourceId: "vm-tt-2", ruleType: "IDLE_VM" },
+    });
+    expect(finding.suggestedActionSummary).toBeNull();
+  });
+
+  it("persists tooltipExplanation for any rule when explainFinding returns text", async () => {
+    const customer = await prisma.customer.create({ data: { entraTenantId: "tenant-tt-3", name: "Tooltips3" } });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-tt-3", displayName: "Tooltips3" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      { id: "disk-tt-3", type: "microsoft.compute/disks", subscriptionId: "sub-tt-3", properties: { diskState: "Unattached" } },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(9.99);
+    vi.mocked(explainFinding).mockResolvedValue("Este disco não está anexado a nenhuma VM.");
+
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, resourceId: "disk-tt-3", ruleType: "ORPHANED_DISK" },
+    });
+    expect(finding.tooltipExplanation).toBe("Este disco não está anexado a nenhuma VM.");
   });
 
   it("persists a VMSS_NO_AUTOSCALE finding for a VMSS with no autoscale settings", async () => {

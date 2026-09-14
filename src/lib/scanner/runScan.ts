@@ -46,6 +46,9 @@ import { findImageOrphaned } from "@/lib/waste-rules/imageOrphaned";
 import { findGalleryImageVersionOld } from "@/lib/waste-rules/galleryImageVersionOld";
 import { isSessionHost, underlyingVm } from "@/lib/waste-rules/avdSessionHosts";
 import { estimateMonthlySavings } from "@/lib/waste-rules/savingsEstimate";
+import { suggestVmSku } from "@/lib/waste-rules/vmSkuSuggestion";
+import { suggestDiskTier } from "@/lib/waste-rules/diskTierSuggestion";
+import { explainFinding, type FindingFacts } from "@/lib/ai/findingExplainer";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
 
 export const COMBINED_QUERY_TYPES = [
@@ -345,6 +348,70 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         );
       }
 
+      let suggestedActionSummary: string | null = null;
+      if (
+        (candidate.ruleType === "IDLE_VM" || candidate.ruleType === "VMSS_IDLE_LOW_UTILIZATION") &&
+        resource
+      ) {
+        try {
+          // A VM's size/OS live at properties.hardwareProfile/storageProfile; a VMSS's live one
+          // level deeper, under properties.virtualMachineProfile (same shape retailPrices.ts's
+          // vmssVmSize/isWindowsVmss already read from). Branch on which rule fired.
+          const isVmss = candidate.ruleType === "VMSS_IDLE_LOW_UTILIZATION";
+          const vmssProfile = resource.properties.virtualMachineProfile as
+            | { hardwareProfile?: { vmSize?: string }; storageProfile?: { osDisk?: { osType?: string } } }
+            | undefined;
+          const hardwareProfile = isVmss
+            ? vmssProfile?.hardwareProfile
+            : (resource.properties.hardwareProfile as { vmSize?: string } | undefined);
+          const storageProfile = isVmss
+            ? vmssProfile?.storageProfile
+            : (resource.properties.storageProfile as { osDisk?: { osType?: string } } | undefined);
+          const vmSize = hardwareProfile?.vmSize;
+          if (vmSize) {
+            const suggestion = await suggestVmSku(
+              resource,
+              subscription.azureSubscriptionId,
+              vmSize,
+              estimatedMonthlyCost,
+              storageProfile?.osDisk?.osType === "Windows",
+            );
+            if (suggestion) {
+              suggestedActionSummary = `Redimensione para ${suggestion.skuName} — economia adicional estimada de $${suggestion.monthlySavings.toFixed(2)}/mês`;
+            }
+          }
+        } catch (error) {
+          console.error(`VM SKU suggestion failed for ${candidate.resourceId}`, error);
+        }
+      } else if (candidate.ruleType === "DISK_TIER_OVERSIZED" && resource) {
+        try {
+          const suggestion = await suggestDiskTier(resource);
+          if (suggestion) {
+            suggestedActionSummary = `Redimensione para ${suggestion.suggestedSizeGb} GiB — economia adicional estimada de $${suggestion.monthlySavings.toFixed(2)}/mês`;
+          }
+        } catch (error) {
+          console.error(`Disk tier suggestion failed for ${candidate.resourceId}`, error);
+        }
+      } else if (candidate.ruleType === "DISK_PREMIUM_TIER_UNNECESSARY" && estimatedMonthlySavings != null) {
+        suggestedActionSummary = `Troque para um disco Standard SSD equivalente — economia estimada de $${estimatedMonthlySavings.toFixed(2)}/mês`;
+      }
+
+      let tooltipExplanation: string | null = null;
+      try {
+        const facts: FindingFacts = {
+          ruleLabel: candidate.ruleType,
+          resourceId: candidate.resourceId,
+          metricObserved: candidate.metricObserved ?? null,
+          periodAnalyzedDays: candidate.periodAnalyzedDays ?? null,
+          savingsCategory: candidate.savingsCategory ?? null,
+          estimatedMonthlyCost,
+          suggestedActionSummary,
+        };
+        tooltipExplanation = await explainFinding(facts);
+      } catch (error) {
+        console.error(`Finding explanation failed for ${candidate.resourceId}`, error);
+      }
+
       await prisma.wasteFinding.upsert({
         where: {
           subscriptionId_resourceId_ruleType: {
@@ -363,6 +430,8 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           savingsCategory: candidate.savingsCategory,
           metricObserved: candidate.metricObserved,
           periodAnalyzedDays: candidate.periodAnalyzedDays,
+          suggestedActionSummary,
+          tooltipExplanation,
         },
         update: {
           billedResourceId: costResource?.id ?? candidate.resourceId,
@@ -371,6 +440,8 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           savingsCategory: candidate.savingsCategory,
           metricObserved: candidate.metricObserved,
           periodAnalyzedDays: candidate.periodAnalyzedDays,
+          suggestedActionSummary,
+          tooltipExplanation,
         },
       });
     }
