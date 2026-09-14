@@ -96,3 +96,15 @@ describe("Ambientes permission-upgrade labels", () => {
     }
   });
 });
+
+describe("Reports labels", () => {
+  const keys = ["reports.savingsChartTitle", "reports.countChartTitle", "reports.downloadPdf"];
+
+  it("has a real translation (not a key fallback) for every key in every locale", () => {
+    for (const locale of LOCALES) {
+      for (const key of keys) {
+        expect(translate(locale, key)).not.toBe(key);
+      }
+    }
+  });
+});

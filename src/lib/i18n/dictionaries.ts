@@ -95,6 +95,9 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.updatePermissions": "Atualizar permissões",
     "ambientes.deployInstructions":
       "Implante o template Azure Lighthouse abaixo e depois clique em Verificar conexão.",
+    "reports.savingsChartTitle": "Economia resolvida por mês",
+    "reports.countChartTitle": "Findings abertos vs. resolvidos por mês",
+    "reports.downloadPdf": "Baixar PDF",
   },
   en: {
     "nav.dashboard": "Dashboard",
@@ -186,6 +189,9 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.updatePermissions": "Update permissions",
     "ambientes.deployInstructions":
       "Deploy the Azure Lighthouse template below, then click Verify connection.",
+    "reports.savingsChartTitle": "Savings resolved by month",
+    "reports.countChartTitle": "Findings opened vs. resolved by month",
+    "reports.downloadPdf": "Download PDF",
   },
   es: {
     "nav.dashboard": "Panel",
@@ -277,6 +283,9 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.updatePermissions": "Actualizar permisos",
     "ambientes.deployInstructions":
       "Implemente la plantilla de Azure Lighthouse a continuación y luego haga clic en Verificar conexión.",
+    "reports.savingsChartTitle": "Ahorro resuelto por mes",
+    "reports.countChartTitle": "Findings abiertos vs. resueltos por mes",
+    "reports.downloadPdf": "Descargar PDF",
   },
 };
 
