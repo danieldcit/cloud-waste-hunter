@@ -113,7 +113,12 @@ export function ReportsClient({
           </section>
           <section className="rounded border border-gray-200 p-4 dark:border-gray-700">
             <h2 className="mb-2 font-semibold">{t("reports.countChartTitle")}</h2>
-            <OpenedVsResolvedChart data={openedVsResolvedByMonth} noDataLabel={t("chart.noData")} />
+            <OpenedVsResolvedChart
+              data={openedVsResolvedByMonth}
+              noDataLabel={t("chart.noData")}
+              openedLabel={t("reports.opened")}
+              resolvedLabel={t("reports.resolved")}
+            />
           </section>
         </div>
       </main>

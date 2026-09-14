@@ -98,6 +98,8 @@ const dictionaries: Record<Locale, Dictionary> = {
     "reports.savingsChartTitle": "Economia resolvida por mês",
     "reports.countChartTitle": "Findings abertos vs. resolvidos por mês",
     "reports.downloadPdf": "Baixar PDF",
+    "reports.opened": "Abertos",
+    "reports.resolved": "Resolvidos",
   },
   en: {
     "nav.dashboard": "Dashboard",
@@ -192,6 +194,8 @@ const dictionaries: Record<Locale, Dictionary> = {
     "reports.savingsChartTitle": "Savings resolved by month",
     "reports.countChartTitle": "Findings opened vs. resolved by month",
     "reports.downloadPdf": "Download PDF",
+    "reports.opened": "Opened",
+    "reports.resolved": "Resolved",
   },
   es: {
     "nav.dashboard": "Panel",
@@ -286,6 +290,8 @@ const dictionaries: Record<Locale, Dictionary> = {
     "reports.savingsChartTitle": "Ahorro resuelto por mes",
     "reports.countChartTitle": "Findings abiertos vs. resueltos por mes",
     "reports.downloadPdf": "Descargar PDF",
+    "reports.opened": "Abiertos",
+    "reports.resolved": "Resueltos",
   },
 };
 

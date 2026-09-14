@@ -167,4 +167,43 @@ describe("GET /api/reports/:subscriptionId/pdf", () => {
     ]);
     expect(renderedDocuments[0].props.totalResolvedSavings).toBe(60);
   });
+
+  it("renders a PDF for a subscription with exactly one month of resolved savings", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-reports-one-month", name: "Acme" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: {
+        customerId: customer.id,
+        azureSubscriptionId: "sub-reports-one-month",
+        displayName: "Prod",
+      },
+    });
+    await prisma.wasteFinding.create({
+      data: {
+        subscriptionId: subscription.id,
+        resourceId: "disk-one-month",
+        billedResourceId: "disk-one-month",
+        ruleType: "ORPHANED_DISK",
+        estimatedMonthlyCost: 12,
+        estimatedMonthlySavings: 12,
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-04-05"),
+      },
+    });
+    vi.mocked(requireCustomerId).mockResolvedValue(customer.id);
+
+    const response = await GET(new Request("http://localhost"), {
+      params: Promise.resolve({ subscriptionId: subscription.id }),
+    });
+
+    // A one-point series is exactly the case that used to draw a blank chart; the
+    // document now plots a marker instead, and must still render.
+    expect(response.status).toBe(200);
+    expect(renderedDocuments[0].props.savingsResolvedByMonth).toEqual([
+      { month: "2026-04", value: 12 },
+    ]);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    expect(buffer.subarray(0, 4).toString()).toBe("%PDF");
+  });
 });

@@ -98,7 +98,13 @@ describe("Ambientes permission-upgrade labels", () => {
 });
 
 describe("Reports labels", () => {
-  const keys = ["reports.savingsChartTitle", "reports.countChartTitle", "reports.downloadPdf"];
+  const keys = [
+    "reports.savingsChartTitle",
+    "reports.countChartTitle",
+    "reports.downloadPdf",
+    "reports.opened",
+    "reports.resolved",
+  ];
 
   it("has a real translation (not a key fallback) for every key in every locale", () => {
     for (const locale of LOCALES) {
