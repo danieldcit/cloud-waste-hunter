@@ -342,7 +342,16 @@ describe("runScan", () => {
     });
     expect(finding.status).toBe("OPEN");
 
-    vi.mocked(queryResourceGraph).mockResolvedValue([]);
+    // disk-7 is gone, but the subscription still has resources (so visibility was not
+    // lost) and no rule degraded — the only conditions under which auto-resolve fires.
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "disk-7-other",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-7",
+        properties: { diskState: "Unattached" },
+      },
+    ]);
     await runScan(subscription.id);
 
     const updatedFinding = await prisma.wasteFinding.findUniqueOrThrow({
@@ -350,6 +359,113 @@ describe("runScan", () => {
     });
     expect(updatedFinding.status).toBe("RESOLVED");
     expect(updatedFinding.resolvedAt).not.toBeNull();
+  });
+
+  it("leaves an OPEN finding untouched when the rule that would have judged it degraded this scan", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-degraded", name: "DegradedRule" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: {
+        customerId: customer.id,
+        azureSubscriptionId: "sub-degraded",
+        displayName: "DegradedRule",
+      },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vm-degraded",
+        type: "microsoft.compute/virtualmachines",
+        subscriptionId: "sub-degraded",
+        properties: {},
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(15);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(1);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, ruleType: "IDLE_VM" },
+    });
+    expect(finding.status).toBe("OPEN");
+
+    // vm-degraded is gone from Resource Graph, and the idle-VM rule throws on the VM that
+    // is still there — so the rule degrades to [] for the whole scan. Its silence about
+    // vm-degraded is a symptom of the throttling, not evidence anyone fixed anything,
+    // so the finding must stay OPEN.
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vm-degraded-other",
+        type: "microsoft.compute/virtualmachines",
+        subscriptionId: "sub-degraded",
+        properties: {},
+      },
+    ]);
+    vi.mocked(getAverageCpuPercent).mockRejectedValue(new Error("Azure Monitor throttled"));
+
+    await runScan(subscription.id);
+
+    const updatedFinding = await prisma.wasteFinding.findUniqueOrThrow({
+      where: { id: finding.id },
+    });
+    expect(updatedFinding.status).toBe("OPEN");
+    expect(updatedFinding.resolvedAt).toBeNull();
+  });
+
+  it("resolves nothing when Resource Graph returns no resources at all (lost visibility, not a cleanup)", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-novis", name: "NoVisibility" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: {
+        customerId: customer.id,
+        azureSubscriptionId: "sub-novis",
+        displayName: "NoVisibility",
+      },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "disk-novis-1",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-novis",
+        properties: { diskState: "Unattached" },
+      },
+      {
+        id: "pip-novis-1",
+        type: "microsoft.network/publicipaddresses",
+        subscriptionId: "sub-novis",
+        properties: {},
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(9.99);
+    vi.mocked(getSubscriptionMonthToDateSpend).mockResolvedValue(0);
+    vi.mocked(getSubscriptionForecast).mockResolvedValue(0);
+    vi.mocked(getSubscriptionDailyCostTrend).mockResolvedValue([]);
+
+    await runScan(subscription.id);
+
+    const openBefore = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id, status: "OPEN" },
+    });
+    expect(openBefore.length).toBeGreaterThan(0);
+
+    // A lapsed Lighthouse delegation looks exactly like this: a successful query with
+    // zero rows back. Nothing may be resolved on the strength of it.
+    vi.mocked(queryResourceGraph).mockResolvedValue([]);
+    await runScan(subscription.id);
+
+    const findingsAfter = await prisma.wasteFinding.findMany({
+      where: { subscriptionId: subscription.id },
+    });
+    expect(findingsAfter).toHaveLength(openBefore.length);
+    expect(findingsAfter.every((f) => f.status === "OPEN")).toBe(true);
+    expect(findingsAfter.every((f) => f.resolvedAt === null)).toBe(true);
   });
 
   it("does not touch a DISMISSED finding when its resource/rule no longer appears in a later scan", async () => {

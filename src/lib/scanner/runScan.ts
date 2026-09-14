@@ -1,3 +1,4 @@
+import type { WasteRuleType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { queryResourceGraph, type ResourceGraphRow } from "@/lib/azure/resourceGraph";
 import { estimateMonthlyCost } from "@/lib/azure/costManagement";
@@ -175,6 +176,14 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       });
     }
 
+    // Rules that degraded to `[]` this scan because they threw. A degraded rule
+    // produced no candidates for reasons that have nothing to do with the customer
+    // fixing anything, so its findings must be excluded from auto-resolve below —
+    // otherwise one throttled Azure Monitor call silently (and permanently, there is
+    // no re-open path) marks every finding of that rule type RESOLVED, fabricating
+    // "savings already realized" figures in the customer-facing PDF report.
+    const degradedRuleTypes = new Set<WasteRuleType>();
+
     let idleVmCandidates: WasteFindingCandidate[] = [];
     try {
       idleVmCandidates = await findIdleVirtualMachines(resources);
@@ -183,6 +192,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         "Idle VM rule failed; treating as zero idle VMs for this scan",
         error,
       );
+      degradedRuleTypes.add("IDLE_VM");
     }
 
     let idleVmssCandidates: WasteFindingCandidate[] = [];
@@ -193,6 +203,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         "Idle VMSS rule failed; treating as zero idle VMSS for this scan",
         error,
       );
+      degradedRuleTypes.add("VMSS_IDLE_LOW_UTILIZATION");
     }
 
     let missingReservationCandidates: WasteFindingCandidate[] = [];
@@ -203,6 +214,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         "VMSS reservation-coverage rule failed; treating as zero findings for this scan",
         error,
       );
+      degradedRuleTypes.add("VMSS_MISSING_SAVINGS_PLAN_OR_RESERVATION");
     }
 
     let diskIdleCandidates: WasteFindingCandidate[] = [];
@@ -213,6 +225,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         "Disk idle-utilization rule failed; treating as zero idle disks for this scan",
         error,
       );
+      degradedRuleTypes.add("DISK_IDLE_LOW_UTILIZATION");
     }
 
     let diskPremiumTierCandidates: WasteFindingCandidate[] = [];
@@ -223,6 +236,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         "Disk premium-tier-unnecessary rule failed; treating as zero findings for this scan",
         error,
       );
+      degradedRuleTypes.add("DISK_PREMIUM_TIER_UNNECESSARY");
     }
 
     let diskPremiumV2Candidates: WasteFindingCandidate[] = [];
@@ -233,6 +247,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         "Disk PremiumV2-oversized rule failed; treating as zero findings for this scan",
         error,
       );
+      degradedRuleTypes.add("DISK_PREMIUM_V2_OVERSIZED");
     }
 
     let diskTierOversizedCandidates: WasteFindingCandidate[] = [];
@@ -243,6 +258,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         "Disk tier-oversized rule failed; treating as zero findings for this scan",
         error,
       );
+      degradedRuleTypes.add("DISK_TIER_OVERSIZED");
     }
 
     const candidates: WasteFindingCandidate[] = [
@@ -359,19 +375,34 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       });
     }
 
-    const detectedKeys = new Set(candidates.map((c) => `${c.resourceId}::${c.ruleType}`));
-    const openFindings = await prisma.wasteFinding.findMany({
-      where: { subscriptionId: subscription.id, status: "OPEN" },
-      select: { id: true, resourceId: true, ruleType: true },
-    });
-    const resolvedIds = openFindings
-      .filter((f) => !detectedKeys.has(`${f.resourceId}::${f.ruleType}`))
-      .map((f) => f.id);
-    if (resolvedIds.length > 0) {
-      await prisma.wasteFinding.updateMany({
-        where: { id: { in: resolvedIds } },
-        data: { status: "RESOLVED", resolvedAt: new Date() },
+    // Auto-resolve: an OPEN finding whose (resourceId, ruleType) no longer shows up in
+    // this scan's candidates is assumed fixed. That inference is only sound when this
+    // scan actually had visibility, so it is gated twice:
+    //   1. An empty Resource Graph result is "we lost visibility" (a lapsed Lighthouse
+    //      delegation, a throttled query), never "the customer deleted everything" —
+    //      resolving on it would close out an entire subscription in one scan.
+    //   2. A rule that threw tells us nothing about its own findings' validity, so its
+    //      rule type is skipped entirely this scan and re-evaluated on the next one.
+    const scanHadResourceVisibility = resources.length > 0;
+    if (scanHadResourceVisibility) {
+      const detectedKeys = new Set(candidates.map((c) => `${c.resourceId}::${c.ruleType}`));
+      const openFindings = await prisma.wasteFinding.findMany({
+        where: { subscriptionId: subscription.id, status: "OPEN" },
+        select: { id: true, resourceId: true, ruleType: true },
       });
+      const resolvedIds = openFindings
+        .filter((f) => {
+          const ruleRanSuccessfully = !degradedRuleTypes.has(f.ruleType);
+          const stillDetected = detectedKeys.has(`${f.resourceId}::${f.ruleType}`);
+          return ruleRanSuccessfully && !stillDetected;
+        })
+        .map((f) => f.id);
+      if (resolvedIds.length > 0) {
+        await prisma.wasteFinding.updateMany({
+          where: { id: { in: resolvedIds } },
+          data: { status: "RESOLVED", resolvedAt: new Date() },
+        });
+      }
     }
 
     await captureCostSnapshot(subscription.id, subscription.azureSubscriptionId);
