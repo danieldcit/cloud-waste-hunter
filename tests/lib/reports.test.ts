@@ -8,9 +8,27 @@ import {
 describe("groupSavingsResolvedByMonth", () => {
   it("sums estimatedMonthlySavings for RESOLVED findings, grouped by resolvedAt's month", () => {
     const result = groupSavingsResolvedByMonth([
-      { status: "RESOLVED", resolvedAt: new Date("2026-01-15"), estimatedMonthlySavings: 10 },
-      { status: "RESOLVED", resolvedAt: new Date("2026-01-20"), estimatedMonthlySavings: 5 },
-      { status: "RESOLVED", resolvedAt: new Date("2026-02-01"), estimatedMonthlySavings: 20 },
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-01-15"),
+        resourceId: "vm-a",
+        billedResourceId: "vm-a",
+        estimatedMonthlySavings: 10,
+      },
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-01-20"),
+        resourceId: "vm-b",
+        billedResourceId: "vm-b",
+        estimatedMonthlySavings: 5,
+      },
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-02-01"),
+        resourceId: "vm-c",
+        billedResourceId: "vm-c",
+        estimatedMonthlySavings: 20,
+      },
     ]);
     expect(result).toEqual([
       { month: "2026-01", value: 15 },
@@ -18,17 +36,120 @@ describe("groupSavingsResolvedByMonth", () => {
     ]);
   });
 
+  it("counts a billed resource once per month, at its max saving, not the sum of its findings", () => {
+    // One VM resolved as both IDLE_VM and VM_MISSING_HYBRID_BENEFIT: you delete it or
+    // you license it, you don't bank both savings.
+    const result = groupSavingsResolvedByMonth([
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-01-15"),
+        resourceId: "vm-shared",
+        billedResourceId: "vm-shared",
+        estimatedMonthlySavings: 30,
+      },
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-01-20"),
+        resourceId: "vm-shared",
+        billedResourceId: "vm-shared",
+        estimatedMonthlySavings: 12,
+      },
+    ]);
+    expect(result).toEqual([{ month: "2026-01", value: 30 }]);
+  });
+
+  it("dedupes by billedResourceId even when the findings point at different resourceIds", () => {
+    const result = groupSavingsResolvedByMonth([
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-01-15"),
+        resourceId: "session-host-1",
+        billedResourceId: "vm-underlying",
+        estimatedMonthlySavings: 40,
+      },
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-01-16"),
+        resourceId: "vm-underlying",
+        billedResourceId: "vm-underlying",
+        estimatedMonthlySavings: 25,
+      },
+    ]);
+    expect(result).toEqual([{ month: "2026-01", value: 40 }]);
+  });
+
+  it("dedupes per month bucket, so one billed resource still counts in each month it was resolved in", () => {
+    const result = groupSavingsResolvedByMonth([
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-01-15"),
+        resourceId: "vm-shared",
+        billedResourceId: "vm-shared",
+        estimatedMonthlySavings: 30,
+      },
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-02-15"),
+        resourceId: "vm-shared",
+        billedResourceId: "vm-shared",
+        estimatedMonthlySavings: 12,
+      },
+    ]);
+    expect(result).toEqual([
+      { month: "2026-01", value: 30 },
+      { month: "2026-02", value: 12 },
+    ]);
+  });
+
+  it("falls back to resourceId for dedup when billedResourceId is unset (pre-backfill rows)", () => {
+    const result = groupSavingsResolvedByMonth([
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-01-15"),
+        resourceId: "disk-legacy",
+        billedResourceId: null,
+        estimatedMonthlySavings: 8,
+      },
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-01-18"),
+        resourceId: "disk-legacy",
+        billedResourceId: null,
+        estimatedMonthlySavings: 3,
+      },
+    ]);
+    expect(result).toEqual([{ month: "2026-01", value: 8 }]);
+  });
+
   it("ignores findings that are not RESOLVED", () => {
     const result = groupSavingsResolvedByMonth([
-      { status: "OPEN", resolvedAt: null, estimatedMonthlySavings: 10 },
-      { status: "DISMISSED", resolvedAt: null, estimatedMonthlySavings: 10 },
+      {
+        status: "OPEN",
+        resolvedAt: null,
+        resourceId: "vm-a",
+        billedResourceId: "vm-a",
+        estimatedMonthlySavings: 10,
+      },
+      {
+        status: "DISMISSED",
+        resolvedAt: null,
+        resourceId: "vm-b",
+        billedResourceId: "vm-b",
+        estimatedMonthlySavings: 10,
+      },
     ]);
     expect(result).toEqual([]);
   });
 
   it("ignores RESOLVED findings with a null estimatedMonthlySavings (unknown, not zero)", () => {
     const result = groupSavingsResolvedByMonth([
-      { status: "RESOLVED", resolvedAt: new Date("2026-01-15"), estimatedMonthlySavings: null },
+      {
+        status: "RESOLVED",
+        resolvedAt: new Date("2026-01-15"),
+        resourceId: "vm-a",
+        billedResourceId: "vm-a",
+        estimatedMonthlySavings: null,
+      },
     ]);
     expect(result).toEqual([]);
   });

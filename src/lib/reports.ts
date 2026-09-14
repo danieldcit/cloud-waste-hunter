@@ -1,25 +1,48 @@
 import type { WasteFinding } from "@prisma/client";
+import {
+  sumMaxSavingsPerBilledResource,
+  type DedupableFinding,
+} from "@/lib/findingDedup";
 
 export interface MonthlyPoint {
   month: string; // "YYYY-MM"
   value: number;
 }
 
-/** Sum of estimatedMonthlySavings for RESOLVED findings, grouped by resolvedAt's month. */
+/**
+ * Savings for RESOLVED findings, grouped by resolvedAt's month.
+ *
+ * Each month's total is deduplicated by billed resource the same way the dashboard
+ * total is (see `sumMaxSavingsPerBilledResource`), so a resource that tripped two
+ * rules and got fixed once counts once — otherwise this chart and the PDF would
+ * report a larger realized saving than the dashboard reports as potential.
+ *
+ * The dedup is per month bucket, not global: a resource legitimately contributes to
+ * every month in which something about it was resolved, and collapsing across months
+ * would silently erase a month's data.
+ */
 export function groupSavingsResolvedByMonth(
-  findings: Pick<WasteFinding, "status" | "resolvedAt" | "estimatedMonthlySavings">[],
+  findings: (Pick<
+    WasteFinding,
+    "status" | "resolvedAt" | "resourceId" | "estimatedMonthlySavings"
+  > & { billedResourceId?: string | null })[],
 ): MonthlyPoint[] {
-  const totals = new Map<string, number>();
+  const byMonth = new Map<string, DedupableFinding[]>();
   for (const f of findings) {
     if (f.status !== "RESOLVED" || f.resolvedAt == null || f.estimatedMonthlySavings == null) {
       continue;
     }
     const month = f.resolvedAt.toISOString().slice(0, 7);
-    totals.set(month, (totals.get(month) ?? 0) + f.estimatedMonthlySavings);
+    const bucket = byMonth.get(month) ?? [];
+    bucket.push(f);
+    byMonth.set(month, bucket);
   }
-  return [...totals.entries()]
+  return [...byMonth.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, value]) => ({ month, value }));
+    .map(([month, bucket]) => ({
+      month,
+      value: sumMaxSavingsPerBilledResource(bucket),
+    }));
 }
 
 export interface OpenedVsResolvedPoint {

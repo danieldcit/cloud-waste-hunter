@@ -17,6 +17,8 @@ interface ReportFinding {
   status: FindingStatus;
   detectedAt: string;
   resolvedAt: string | null;
+  resourceId: string;
+  billedResourceId: string | null;
   estimatedMonthlySavings: number | null;
 }
 
@@ -50,6 +52,8 @@ export function ReportsClient({
       subscriptionFindings.map((f) => ({
         status: f.status,
         resolvedAt: f.resolvedAt == null ? null : new Date(f.resolvedAt),
+        resourceId: f.resourceId,
+        billedResourceId: f.billedResourceId,
         estimatedMonthlySavings: f.estimatedMonthlySavings,
       })),
     );

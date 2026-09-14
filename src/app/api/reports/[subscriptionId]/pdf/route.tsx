@@ -3,6 +3,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { prisma } from "@/lib/prisma";
 import { requireCustomerId } from "@/lib/tenant";
 import { translate } from "@/lib/i18n/dictionaries";
+import { computeDashboardSummary } from "@/lib/dashboard-summary";
 import {
   groupSavingsResolvedByMonth,
   groupOpenedVsResolvedByMonth,
@@ -30,20 +31,19 @@ export async function GET(
   });
 
   const openFindings = findings.filter((f) => f.status === "OPEN");
-  const totalOpenSavings = openFindings.reduce(
-    (sum, f) => sum + (f.estimatedMonthlySavings ?? 0),
-    0,
-  );
-  const resolvedFindings = findings.filter((f) => f.status === "RESOLVED");
-  const totalResolvedSavings = resolvedFindings.reduce(
-    (sum, f) => sum + (f.estimatedMonthlySavings ?? 0),
-    0,
-  );
-
+  // Same figure, same way it is computed on the dashboard — a flat sum here would
+  // double-count any resource carrying more than one open finding and print a
+  // "potential savings" number the dashboard contradicts.
+  const { totalEstimatedMonthlySavings: totalOpenSavings } =
+    computeDashboardSummary(findings);
   const savingsResolvedByMonth = fillMonthGaps(groupSavingsResolvedByMonth(findings), (month) => ({
     month,
     value: 0,
   }));
+  // Derived from the monthly series rather than summed independently, so the headline
+  // figure and the chart printed directly beneath it can never disagree.
+  const totalResolvedSavings = savingsResolvedByMonth.reduce((sum, p) => sum + p.value, 0);
+
   const openedVsResolvedByMonth = fillMonthGaps(
     groupOpenedVsResolvedByMonth(findings),
     (month) => ({ month, opened: 0, resolved: 0 }),

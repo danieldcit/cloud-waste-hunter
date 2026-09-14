@@ -31,6 +31,8 @@ export default async function ReportsPage() {
         status: f.status,
         detectedAt: f.detectedAt.toISOString(),
         resolvedAt: f.resolvedAt?.toISOString() ?? null,
+        resourceId: f.resourceId,
+        billedResourceId: f.billedResourceId ?? null,
         estimatedMonthlySavings: f.estimatedMonthlySavings,
       }))}
     />
