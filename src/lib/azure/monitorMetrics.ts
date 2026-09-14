@@ -3,7 +3,7 @@ import { armFetch } from "@/lib/azure/armFetch";
 interface MetricsResponse {
   value: {
     timeseries?: {
-      data: { timeStamp: string; average?: number }[];
+      data: { timeStamp: string; average?: number; maximum?: number }[];
     }[];
   }[];
 }
@@ -60,9 +60,17 @@ export async function getHourlyCpuBelowThreshold(
   return belowThreshold / values.length;
 }
 
-async function getAverageMetric(
+/**
+ * Generalization of the former private `getAverageMetric` to accept the aggregation type —
+ * Azure Monitor's response puts the requested aggregation's value under a matching field name
+ * (`average` for `aggregation=Average`, `maximum` for `aggregation=Maximum`, confirmed live
+ * against a real VM's Percentage CPU metric on 2026-09-14). `getAverageMetric` callers now call
+ * this with `"Average"`.
+ */
+async function getMetricStatistic(
   resourceId: string,
   metricName: string,
+  aggregation: "Average" | "Maximum",
   days: number,
   now: Date,
 ): Promise<number | null> {
@@ -71,19 +79,30 @@ async function getAverageMetric(
   const url =
     `https://management.azure.com${resourceId}/providers/Microsoft.Insights/metrics` +
     `?api-version=2018-01-01&metricnames=${encodeURIComponent(metricName)}` +
-    `&aggregation=Average&interval=P1D&timespan=${encodeURIComponent(timespan)}`;
+    `&aggregation=${aggregation}&interval=P1D&timespan=${encodeURIComponent(timespan)}`;
 
   const response = await armFetch<MetricsResponse>(url);
-
   const points = response.value[0]?.timeseries?.[0]?.data ?? [];
+  const field = aggregation === "Average" ? "average" : "maximum";
   const values = points
-    .map((p) => p.average)
+    .map((p) => p[field])
     .filter((v): v is number => typeof v === "number");
 
   if (values.length === 0) {
     return null;
   }
-  return values.reduce((sum, v) => sum + v, 0) / values.length;
+  return aggregation === "Average"
+    ? values.reduce((sum, v) => sum + v, 0) / values.length
+    : Math.max(...values);
+}
+
+async function getAverageMetric(
+  resourceId: string,
+  metricName: string,
+  days: number,
+  now: Date,
+): Promise<number | null> {
+  return getMetricStatistic(resourceId, metricName, "Average", days, now);
 }
 
 /**
@@ -110,4 +129,27 @@ export async function getAverageDiskIops(
     return null;
   }
   return (readIops ?? 0) + (writeIops ?? 0);
+}
+
+export async function getMaxCpuPercent(
+  resourceId: string,
+  days = 30,
+  now: Date = new Date(),
+): Promise<number | null> {
+  return getMetricStatistic(resourceId, "Percentage CPU", "Maximum", days, now);
+}
+
+export async function getMaxDiskIops(
+  resourceId: string,
+  days = 30,
+  now: Date = new Date(),
+): Promise<number | null> {
+  const [read, write] = await Promise.all([
+    getMetricStatistic(resourceId, "Composite Disk Read Operations/sec", "Maximum", days, now),
+    getMetricStatistic(resourceId, "Composite Disk Write Operations/sec", "Maximum", days, now),
+  ]);
+  if (read === null && write === null) {
+    return null;
+  }
+  return (read ?? 0) + (write ?? 0);
 }

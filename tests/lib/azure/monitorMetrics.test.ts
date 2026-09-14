@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as armFetchModule from "@/lib/azure/armFetch";
-import { getAverageCpuPercent, getHourlyCpuBelowThreshold, getAverageDiskIops } from "@/lib/azure/monitorMetrics";
+import { getAverageCpuPercent, getHourlyCpuBelowThreshold, getAverageDiskIops, getMaxCpuPercent, getMaxDiskIops } from "@/lib/azure/monitorMetrics";
 
 describe("getAverageCpuPercent", () => {
   beforeEach(() => {
@@ -166,5 +166,45 @@ describe("getAverageDiskIops", () => {
     expect(decodeURIComponent(readUrl)).toContain("Composite Disk Read Operations/sec");
     expect(decodeURIComponent(writeUrl)).toContain("Composite Disk Write Operations/sec");
     expect(readUrl).toContain("interval=P1D");
+  });
+});
+
+describe("getMaxCpuPercent", () => {
+  it("returns the maximum value across the daily data points", async () => {
+    vi.spyOn(armFetchModule, "armFetch").mockResolvedValue({
+      value: [{ timeseries: [{ data: [{ timeStamp: "t1", maximum: 4.1 }, { timeStamp: "t2", maximum: 99.22 }, { timeStamp: "t3", maximum: 3 }] }] }],
+    });
+    expect(await getMaxCpuPercent("/subscriptions/x/vm-1", 30)).toBe(99.22);
+  });
+
+  it("returns null when there are no data points (not zero)", async () => {
+    vi.spyOn(armFetchModule, "armFetch").mockResolvedValue({ value: [{ timeseries: [{ data: [] }] }] });
+    expect(await getMaxCpuPercent("/subscriptions/x/vm-1", 30)).toBeNull();
+  });
+});
+
+describe("getMaxDiskIops", () => {
+  it("sums the read and write maximums", async () => {
+    const spy = vi.spyOn(armFetchModule, "armFetch");
+    spy
+      .mockResolvedValueOnce({ value: [{ timeseries: [{ data: [{ timeStamp: "t1", maximum: 500 }] }] }] })
+      .mockResolvedValueOnce({ value: [{ timeseries: [{ data: [{ timeStamp: "t1", maximum: 300 }] }] }] });
+    expect(await getMaxDiskIops("/subscriptions/x/disk-1", 30)).toBe(800);
+  });
+
+  it("returns null when both read and write have no data", async () => {
+    const spy = vi.spyOn(armFetchModule, "armFetch");
+    spy
+      .mockResolvedValueOnce({ value: [{ timeseries: [{ data: [] }] }] })
+      .mockResolvedValueOnce({ value: [{ timeseries: [{ data: [] }] }] });
+    expect(await getMaxDiskIops("/subscriptions/x/disk-1", 30)).toBeNull();
+  });
+
+  it("treats one side having data and the other not as a real zero on the missing side, not null", async () => {
+    const spy = vi.spyOn(armFetchModule, "armFetch");
+    spy
+      .mockResolvedValueOnce({ value: [{ timeseries: [{ data: [{ timeStamp: "t1", maximum: 500 }] }] }] })
+      .mockResolvedValueOnce({ value: [{ timeseries: [{ data: [] }] }] });
+    expect(await getMaxDiskIops("/subscriptions/x/disk-1", 30)).toBe(500);
   });
 });
