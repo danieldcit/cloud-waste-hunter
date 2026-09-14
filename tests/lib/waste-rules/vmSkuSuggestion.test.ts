@@ -54,7 +54,7 @@ describe("suggestVmSku", () => {
 
   it("returns null when peak CPU is unavailable", async () => {
     const result = await suggestVmSku(
-      resource, "sub-1", "Standard_D4s_v3", 100, false,
+      resource, "sub-1", "Standard_D4s_v3", false,
       vi.fn().mockResolvedValue(null),
       vi.fn(),
       vi.fn(),
@@ -64,7 +64,7 @@ describe("suggestVmSku", () => {
 
   it("returns null when the current VM's size isn't found in the region's SKU list", async () => {
     const result = await suggestVmSku(
-      resource, "sub-1", "Standard_D4s_v3", 100, false,
+      resource, "sub-1", "Standard_D4s_v3", false,
       vi.fn().mockResolvedValue(10),
       vi.fn().mockResolvedValue([]), // current size missing — never guess its specs
       vi.fn(),
@@ -74,10 +74,24 @@ describe("suggestVmSku", () => {
 
   it("returns null when no safe candidate exists", async () => {
     const result = await suggestVmSku(
-      resource, "sub-1", "Standard_D4s_v3", 100, false,
+      resource, "sub-1", "Standard_D4s_v3", false,
       vi.fn().mockResolvedValue(10), // low peak
       vi.fn().mockResolvedValue([currentSku]), // only the current size itself — no smaller candidate
       vi.fn(),
+    );
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the current SKU itself can't be priced", async () => {
+    const skus: VmSkuCandidate[] = [
+      currentSku,
+      { name: "Standard_B2ms", vCPUs: 2, memoryGB: 16, restricted: false },
+    ];
+    const result = await suggestVmSku(
+      resource, "sub-1", "Standard_D4s_v3", false,
+      vi.fn().mockResolvedValue(10),
+      vi.fn().mockResolvedValue(skus),
+      vi.fn().mockResolvedValue(0), // getSkuPrice returns 0 for the current SKU itself
     );
     expect(result).toBeNull();
   });
@@ -89,10 +103,11 @@ describe("suggestVmSku", () => {
       { name: "Standard_B2ms", vCPUs: 2, memoryGB: 16, restricted: false },
     ];
     const getSkuPrice = vi.fn()
+      .mockResolvedValueOnce(100) // current SKU (Standard_D4s_v3)
       .mockResolvedValueOnce(80) // Standard_B1ms
       .mockResolvedValueOnce(40); // Standard_B2ms — cheaper than B1ms despite more vCPUs (hypothetical, still valid: pick min price)
     const result = await suggestVmSku(
-      resource, "sub-1", "Standard_D4s_v3", 100, false,
+      resource, "sub-1", "Standard_D4s_v3", false,
       vi.fn().mockResolvedValue(10),
       vi.fn().mockResolvedValue(skus),
       getSkuPrice,
@@ -102,11 +117,14 @@ describe("suggestVmSku", () => {
 
   it("returns null when all priced candidates cost as much or more than the current VM", async () => {
     const skus: VmSkuCandidate[] = [currentSku, { name: "Standard_B2ms", vCPUs: 2, memoryGB: 16, restricted: false }];
+    const getSkuPrice = vi.fn()
+      .mockResolvedValueOnce(50) // current SKU
+      .mockResolvedValueOnce(60); // candidate — more expensive than current
     const result = await suggestVmSku(
-      resource, "sub-1", "Standard_D4s_v3", 50, false,
+      resource, "sub-1", "Standard_D4s_v3", false,
       vi.fn().mockResolvedValue(10),
       vi.fn().mockResolvedValue(skus),
-      vi.fn().mockResolvedValue(60), // more expensive than current
+      getSkuPrice,
     );
     expect(result).toBeNull();
   });

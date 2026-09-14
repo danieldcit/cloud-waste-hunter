@@ -50,6 +50,7 @@ import { suggestVmSku } from "@/lib/waste-rules/vmSkuSuggestion";
 import { suggestDiskTier } from "@/lib/waste-rules/diskTierSuggestion";
 import { explainFinding, type FindingFacts } from "@/lib/ai/findingExplainer";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
+import { translate } from "@/lib/i18n/dictionaries";
 
 export const COMBINED_QUERY_TYPES = [
   "microsoft.compute/disks",
@@ -373,11 +374,10 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
               resource,
               subscription.azureSubscriptionId,
               vmSize,
-              estimatedMonthlyCost,
               storageProfile?.osDisk?.osType === "Windows",
             );
             if (suggestion) {
-              suggestedActionSummary = `Redimensione para ${suggestion.skuName} — economia adicional estimada de $${suggestion.monthlySavings.toFixed(2)}/mês`;
+              suggestedActionSummary = `Redimensione para ${suggestion.skuName} em vez de desligar — economia estimada de $${suggestion.monthlySavings.toFixed(2)}/mês`;
             }
           }
         } catch (error) {
@@ -399,7 +399,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       let tooltipExplanation: string | null = null;
       try {
         const facts: FindingFacts = {
-          ruleLabel: candidate.ruleType,
+          ruleLabel: translate("pt-BR", `rule.${candidate.ruleType}`),
           resourceId: candidate.resourceId,
           metricObserved: candidate.metricObserved ?? null,
           periodAnalyzedDays: candidate.periodAnalyzedDays ?? null,

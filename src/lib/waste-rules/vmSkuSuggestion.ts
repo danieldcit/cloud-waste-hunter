@@ -51,7 +51,6 @@ export async function suggestVmSku(
   resource: ResourceGraphRow,
   azureSubscriptionId: string,
   vmSize: string,
-  currentMonthlyCost: number,
   wantsWindows: boolean,
   getPeakCpu: (resourceId: string, days: number) => Promise<number | null> = getMaxCpuPercent,
   listSkus: (subId: string, location: string) => Promise<VmSkuCandidate[]> = listVmSkusForRegion,
@@ -70,6 +69,13 @@ export async function suggestVmSku(
       // Can't find the current VM's own specs in the live list — never guess vCPU/RAM.
       return null;
     }
+
+    const currentPrice = await getSkuPrice(region, vmSize, wantsWindows);
+    if (currentPrice <= 0) {
+      // Can't price the current SKU at all — no basis for a savings comparison, never guess.
+      return null;
+    }
+
     const safeCandidates = findSafeVmSkuCandidates(allSkus, currentSku.vCPUs, currentSku.memoryGB, peakCpuPercent);
     if (safeCandidates.length === 0) {
       return null;
@@ -87,7 +93,7 @@ export async function suggestVmSku(
     if (cheapest === null) {
       return null;
     }
-    const monthlySavings = currentMonthlyCost - cheapest.price;
+    const monthlySavings = currentPrice - cheapest.price;
     if (monthlySavings <= 0) {
       return null;
     }

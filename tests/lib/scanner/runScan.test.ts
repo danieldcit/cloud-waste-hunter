@@ -51,6 +51,7 @@ import {
   estimateRetailMonthlyCost,
   estimateHybridBenefitMonthlySavings,
   estimateLinuxByolMonthlySavings,
+  estimatePremiumDiskDowngradeMonthlySavings,
 } from "@/lib/azure/retailPrices";
 import {
   listReservationRecommendations,
@@ -868,7 +869,7 @@ describe("runScan", () => {
       where: { subscriptionId: subscription.id, resourceId: "vm-tt-1", ruleType: "IDLE_VM" },
     });
     expect(finding.suggestedActionSummary).toBe(
-      "Redimensione para Standard_B2ms — economia adicional estimada de $42.00/mês",
+      "Redimensione para Standard_B2ms em vez de desligar — economia estimada de $42.00/mês",
     );
   });
 
@@ -916,6 +917,136 @@ describe("runScan", () => {
       where: { subscriptionId: subscription.id, resourceId: "disk-tt-3", ruleType: "ORPHANED_DISK" },
     });
     expect(finding.tooltipExplanation).toBe("Este disco não está anexado a nenhuma VM.");
+  });
+
+  it("persists suggestedActionSummary for a VMSS_IDLE_LOW_UTILIZATION finding using the nested virtualMachineProfile shape", async () => {
+    const customer = await prisma.customer.create({ data: { entraTenantId: "tenant-tt-4", name: "Tooltips4" } });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-tt-4", displayName: "Tooltips4" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vmss-tt-4",
+        type: "microsoft.compute/virtualmachinescalesets",
+        subscriptionId: "sub-tt-4",
+        sku: { name: "Standard_D2s_v3", capacity: 2 },
+        properties: {
+          virtualMachineProfile: {
+            hardwareProfile: { vmSize: "Standard_D2s_v3" },
+            storageProfile: { osDisk: { osType: "Linux" } },
+          },
+        },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(100);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(2);
+    vi.mocked(suggestVmSku).mockResolvedValue({ skuName: "Standard_B2ms", monthlySavings: 42 });
+    vi.mocked(explainFinding).mockResolvedValue(null);
+
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, resourceId: "vmss-tt-4", ruleType: "VMSS_IDLE_LOW_UTILIZATION" },
+    });
+    expect(finding.suggestedActionSummary).toBe(
+      "Redimensione para Standard_B2ms em vez de desligar — economia estimada de $42.00/mês",
+    );
+  });
+
+  it("persists suggestedActionSummary for a DISK_TIER_OVERSIZED finding when suggestDiskTier returns a suggestion", async () => {
+    const customer = await prisma.customer.create({ data: { entraTenantId: "tenant-tt-5", name: "Tooltips5" } });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-tt-5", displayName: "Tooltips5" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "disk-tt-5",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-tt-5",
+        sku: { name: "Premium_LRS" },
+        // diskSizeGB=1024 -> maxIops 5000, threshold 5000*0.2=1000; avgIops 600 trips
+        // DISK_TIER_OVERSIZED (600 < 1000) but stays above DISK_PREMIUM_TIER_UNNECESSARY's flat
+        // 500-IOPS threshold, so only DISK_TIER_OVERSIZED fires for this resource.
+        properties: { diskState: "Attached", diskSizeGB: 1024 },
+      },
+    ]);
+    vi.mocked(getAverageDiskIops).mockResolvedValue(600);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(50);
+    vi.mocked(suggestDiskTier).mockResolvedValue({ suggestedSizeGb: 128, monthlySavings: 30 });
+    vi.mocked(explainFinding).mockResolvedValue(null);
+
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, resourceId: "disk-tt-5", ruleType: "DISK_TIER_OVERSIZED" },
+    });
+    expect(finding.suggestedActionSummary).toBe(
+      "Redimensione para 128 GiB — economia adicional estimada de $30.00/mês",
+    );
+  });
+
+  it("persists suggestedActionSummary for a DISK_PREMIUM_TIER_UNNECESSARY finding via the existing savings-estimation path", async () => {
+    const customer = await prisma.customer.create({ data: { entraTenantId: "tenant-tt-6", name: "Tooltips6" } });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-tt-6", displayName: "Tooltips6" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "disk-tt-6",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-tt-6",
+        sku: { name: "Premium_LRS" },
+        // No diskSizeGB, so DISK_TIER_OVERSIZED skips this disk (sizeGb <= 0) — only
+        // DISK_PREMIUM_TIER_UNNECESSARY fires (avgIops 50 < its flat 500-IOPS threshold).
+        properties: { diskState: "Attached" },
+      },
+    ]);
+    vi.mocked(getAverageDiskIops).mockResolvedValue(50);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(40);
+    vi.mocked(estimatePremiumDiskDowngradeMonthlySavings).mockResolvedValue(15);
+    vi.mocked(explainFinding).mockResolvedValue(null);
+
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, resourceId: "disk-tt-6", ruleType: "DISK_PREMIUM_TIER_UNNECESSARY" },
+    });
+    expect(finding.suggestedActionSummary).toBe(
+      "Troque para um disco Standard SSD equivalente — economia estimada de $15.00/mês",
+    );
+    expect(suggestVmSku).not.toHaveBeenCalled();
+    expect(suggestDiskTier).not.toHaveBeenCalled();
+  });
+
+  it("leaves suggestedActionSummary null for a DISK_PREMIUM_V2_OVERSIZED finding (rule deliberately absent from the suggestion chain)", async () => {
+    const customer = await prisma.customer.create({ data: { entraTenantId: "tenant-tt-7", name: "Tooltips7" } });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-tt-7", displayName: "Tooltips7" },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "disk-tt-7",
+        type: "microsoft.compute/disks",
+        subscriptionId: "sub-tt-7",
+        sku: { name: "PremiumV2_LRS" },
+        // configuredIops 9000 > 3000-IOPS included baseline, and >= avgIops(100) * 3 -> triggers.
+        properties: { diskState: "Attached", diskIOPSReadWrite: 9000 },
+      },
+    ]);
+    vi.mocked(getAverageDiskIops).mockResolvedValue(100);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(60);
+    vi.mocked(explainFinding).mockResolvedValue(null);
+
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, resourceId: "disk-tt-7", ruleType: "DISK_PREMIUM_V2_OVERSIZED" },
+    });
+    expect(finding.suggestedActionSummary).toBeNull();
   });
 
   it("persists a VMSS_NO_AUTOSCALE finding for a VMSS with no autoscale settings", async () => {
