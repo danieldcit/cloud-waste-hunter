@@ -143,6 +143,8 @@ model WasteFinding {
   metricObserved          Float?
   periodAnalyzedDays      Int?
   estimatedMonthlySavings Float?
+  suggestedActionSummary  String?
+  tooltipExplanation      String?
   resolvedAt              DateTime?
 
   @@unique([subscriptionId, resourceId, ruleType])
