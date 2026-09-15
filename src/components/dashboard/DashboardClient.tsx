@@ -73,7 +73,7 @@ export function DashboardClient({
       if (
         categoryFilter === "costManagement" &&
         costSubcategoryFilter !== "all" &&
-        costManagementSubcategoryForRule(f.ruleType) !== costSubcategoryFilter
+        !costManagementSubcategoryForRule(f.ruleType).includes(costSubcategoryFilter)
       ) {
         return false;
       }
@@ -85,7 +85,7 @@ export function DashboardClient({
         t(`rule.${f.ruleType}`).toLowerCase().includes(term)
       );
     });
-  }, [visibleFindings, categoryFilter, search, t]);
+  }, [visibleFindings, categoryFilter, costSubcategoryFilter, search, t]);
 
   async function handleTakeAction(findingId: string) {
     const response = await fetch(`/api/findings/${findingId}/dismiss`, { method: "POST" });
@@ -157,7 +157,7 @@ export function DashboardClient({
           </section>
         </div>
 
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-4 flex max-w-full flex-wrap gap-2 overflow-x-auto">
           {(["all", "compute", "storage", "network", "databases", "containers", "dataAi", "costManagement"] as const).map((category) => (
             <button
               key={category}
@@ -259,6 +259,16 @@ export function DashboardClient({
                 </tr>
               );
             })}
+            {rows.length === 0 && (
+              <tr>
+                <td
+                  colSpan={9}
+                  className="p-6 text-center text-sm text-gray-500 dark:text-gray-400"
+                >
+                  {t("filters.noFindings")}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </main>

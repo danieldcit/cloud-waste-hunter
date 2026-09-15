@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { categoryForRule, impactForCost } from "@/lib/dashboard-categories";
+import {
+  categoryForRule,
+  costManagementSubcategoryForRule,
+  impactForCost,
+} from "@/lib/dashboard-categories";
 
 describe("categoryForRule", () => {
   it("maps storage rules", () => {
@@ -14,6 +18,12 @@ describe("categoryForRule", () => {
   it("maps network rules", () => {
     expect(categoryForRule("UNASSOCIATED_PUBLIC_IP")).toBe("network");
     expect(categoryForRule("IDLE_VPN_GATEWAY")).toBe("network");
+  });
+
+  it("maps cost-management rules to every applicable subcategory", () => {
+    expect(costManagementSubcategoryForRule("VMSS_MISSING_SAVINGS_PLAN_OR_RESERVATION"))
+      .toEqual(["reservations", "savingsPlans"]);
+    expect(costManagementSubcategoryForRule("ROI_PRIORITIZATION")).toEqual(["roi"]);
   });
 
   it("maps every VMSS category-2 rule to its main dashboard group", () => {
@@ -100,7 +110,7 @@ describe("categoryForRule", () => {
   it("maps the implemented category 34-43 rules", () => {
     const category34To43 = [
       ["VM_MISSING_COMMITMENT_COVERAGE", "costManagement"],
-      ["ORPHANED_NAT_GATEWAY", "network"],
+      ["ORPHANED_NAT_GATEWAY", "costManagement"],
       ["DEVTEST_SPOT_ELIGIBLE", "costManagement"],
       ["SCHEDULE_REQUIRED_BUT_MISSING", "costManagement"],
       ["ARCHITECTURE_REVIEW_REQUIRED", "costManagement"],

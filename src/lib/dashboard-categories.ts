@@ -100,7 +100,7 @@ const CATEGORY_BY_RULE: Record<WasteRuleType, DashboardCategory> = {
   LOGIC_APP_DISABLED: "dataAi",
   AUTOMATION_ACCOUNT_IDLE: "costManagement",
   VM_MISSING_COMMITMENT_COVERAGE: "costManagement",
-  ORPHANED_NAT_GATEWAY: "network",
+  ORPHANED_NAT_GATEWAY: "costManagement",
   DEVTEST_SPOT_ELIGIBLE: "costManagement",
   SCHEDULE_REQUIRED_BUT_MISSING: "costManagement",
   ARCHITECTURE_REVIEW_REQUIRED: "costManagement",
@@ -115,28 +115,30 @@ export function categoryForRule(ruleType: WasteRuleType): DashboardCategory {
   return CATEGORY_BY_RULE[ruleType];
 }
 
-const COST_SUBCATEGORY_BY_RULE: Partial<Record<WasteRuleType, CostManagementSubcategory>> = {
-  VM_MISSING_HYBRID_BENEFIT: "licensing",
-  VM_MISSING_LINUX_BYOL: "licensing",
-  VMSS_MISSING_SAVINGS_PLAN_OR_RESERVATION: "reservations",
-  VM_MISSING_COMMITMENT_COVERAGE: "reservations",
-  DEVTEST_SPOT_ELIGIBLE: "devTest",
-  VMSS_NONPROD_NO_SCHEDULE: "schedule",
-  SCHEDULE_REQUIRED_BUT_MISSING: "schedule",
-  ORPHANED_NAT_GATEWAY: "cleanup",
-  AUTOMATION_ACCOUNT_IDLE: "cleanup",
-  AUTOMATION_EXPIRED_RESOURCE: "cleanup",
-  COST_ANOMALY_DETECTED: "anomalies",
-  UNIT_ECONOMICS_REVIEW: "anomalies",
-  FORECAST_ACTIONABLE_FINDING: "forecastBudget",
-  ARCHITECTURE_REVIEW_REQUIRED: "architecture",
-  ROI_PRIORITIZATION: "roi",
+const COST_SUBCATEGORIES_BY_RULE: Partial<
+  Record<WasteRuleType, CostManagementSubcategory[]>
+> = {
+  VM_MISSING_HYBRID_BENEFIT: ["licensing"],
+  VM_MISSING_LINUX_BYOL: ["licensing"],
+  VMSS_MISSING_SAVINGS_PLAN_OR_RESERVATION: ["reservations", "savingsPlans"],
+  VM_MISSING_COMMITMENT_COVERAGE: ["reservations", "savingsPlans"],
+  DEVTEST_SPOT_ELIGIBLE: ["devTest"],
+  VMSS_NONPROD_NO_SCHEDULE: ["schedule"],
+  SCHEDULE_REQUIRED_BUT_MISSING: ["schedule"],
+  ORPHANED_NAT_GATEWAY: ["cleanup"],
+  AUTOMATION_ACCOUNT_IDLE: ["cleanup"],
+  AUTOMATION_EXPIRED_RESOURCE: ["cleanup"],
+  COST_ANOMALY_DETECTED: ["anomalies"],
+  UNIT_ECONOMICS_REVIEW: ["anomalies"],
+  FORECAST_ACTIONABLE_FINDING: ["forecastBudget"],
+  ARCHITECTURE_REVIEW_REQUIRED: ["architecture"],
+  ROI_PRIORITIZATION: ["roi"],
 };
 
 export function costManagementSubcategoryForRule(
   ruleType: WasteRuleType,
-): CostManagementSubcategory | null {
-  return COST_SUBCATEGORY_BY_RULE[ruleType] ?? null;
+): CostManagementSubcategory[] {
+  return COST_SUBCATEGORIES_BY_RULE[ruleType] ?? [];
 }
 
 export type ImpactLevel = "high" | "medium" | "low";
