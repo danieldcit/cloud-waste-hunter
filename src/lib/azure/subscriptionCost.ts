@@ -63,13 +63,14 @@ export async function getSubscriptionMonthToDateSpend(
 export async function getSubscriptionForecast(
   azureSubscriptionId: string,
 ): Promise<number> {
-  const url = `https://management.azure.com/subscriptions/${azureSubscriptionId}/providers/Microsoft.CostManagement/forecast?api-version=2023-11-01`;
+  const url = `https://management.azure.com/subscriptions/${azureSubscriptionId}/providers/Microsoft.CostManagement/query?api-version=2023-11-01`;
+  const now = new Date();
   const response = await costFetch<CostQueryResponse>(url, {
     method: "POST",
     body: JSON.stringify({
       type: "ActualCost",
-      timeframe: "MonthToDate",
-      includeActualCost: true,
+      timeframe: "Custom",
+      timePeriod: monthToDatePeriod(now),
       dataset: {
         granularity: "Daily",
         aggregation: { totalCost: { name: "Cost", function: "Sum" } },
@@ -80,10 +81,15 @@ export async function getSubscriptionForecast(
   if (costIndex === -1) {
     return 0;
   }
-  return response.properties.rows.reduce(
+  const monthToDate = response.properties.rows.reduce(
     (sum, row) => sum + (Number(row[costIndex]) || 0),
     0,
   );
+  const elapsedDays = now.getUTCDate();
+  const daysInMonth = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  return elapsedDays > 0 ? (monthToDate / elapsedDays) * daysInMonth : 0;
 }
 
 export async function getSubscriptionDailyCostTrend(

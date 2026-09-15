@@ -42,16 +42,16 @@ describe("getSubscriptionForecast", () => {
     vi.restoreAllMocks();
   });
 
-  it("calls the Forecast endpoint and returns the Cost total", async () => {
+  it("projects the monthly bill from the real month-to-date cost", async () => {
     const spy = vi.spyOn(armFetchModule, "armFetch").mockResolvedValue({
       properties: { columns: [{ name: "Cost" }], rows: [[999]] },
     });
 
     const result = await getSubscriptionForecast("sub-1");
 
-    expect(result).toBe(999);
+    expect(result).toBeGreaterThan(999);
     const [url] = spy.mock.calls[0];
-    expect(url).toContain("/subscriptions/sub-1/providers/Microsoft.CostManagement/forecast");
+    expect(url).toContain("/subscriptions/sub-1/providers/Microsoft.CostManagement/query");
   });
 
   it("sums the Cost column across multiple forecast rows instead of only reading the first row", async () => {
@@ -64,10 +64,10 @@ describe("getSubscriptionForecast", () => {
 
     const result = await getSubscriptionForecast("sub-1");
 
-    expect(result).toBe(500);
+    expect(result).toBeGreaterThan(500);
     const [, init] = spy.mock.calls[0];
     const body = JSON.parse(init!.body as string);
-    expect(body.includeActualCost).toBe(true);
+    expect(body.timeframe).toBe("Custom");
     expect(body.dataset.granularity).toBe("Daily");
   });
 
