@@ -933,7 +933,7 @@ describe("runScan", () => {
     const finding = await prisma.wasteFinding.findFirstOrThrow({
       where: { subscriptionId: subscription.id, resourceId: "vm-tt-1", ruleType: "IDLE_VM" },
     });
-    expect(finding.suggestedActionSummary).toBe(
+    expect(finding.suggestedActionSummary).toContain(
       "reduza o consumo para Standard_B2ms (economia estimada de $42.00/mês) e desligue a VM/VMSS quando não houver carga.",
     );
   });
@@ -961,7 +961,7 @@ describe("runScan", () => {
     const finding = await prisma.wasteFinding.findFirstOrThrow({
       where: { subscriptionId: subscription.id, resourceId: "vm-tt-2", ruleType: "IDLE_VM" },
     });
-    expect(finding.suggestedActionSummary).toBe(
+    expect(finding.suggestedActionSummary).toContain(
       "reduza o consumo do recurso quando a carga permitir e desligue a VM/VMSS quando não houver carga.",
     );
   });
@@ -1016,7 +1016,7 @@ describe("runScan", () => {
     const finding = await prisma.wasteFinding.findFirstOrThrow({
       where: { subscriptionId: subscription.id, resourceId: "vmss-tt-4", ruleType: "VMSS_IDLE_LOW_UTILIZATION" },
     });
-    expect(finding.suggestedActionSummary).toBe(
+    expect(finding.suggestedActionSummary).toContain(
       "reduza o consumo para Standard_B2ms (economia estimada de $42.00/mês) e desligue a VM/VMSS quando não houver carga.",
     );
   });
@@ -1049,7 +1049,7 @@ describe("runScan", () => {
     const finding = await prisma.wasteFinding.findFirstOrThrow({
       where: { subscriptionId: subscription.id, resourceId: "disk-tt-5", ruleType: "DISK_TIER_OVERSIZED" },
     });
-    expect(finding.suggestedActionSummary).toBe(
+    expect(finding.suggestedActionSummary).toContain(
       "reduza o disco para 128 GiB (economia estimada de $30.00/mês) e exclua o disco quando ele não for mais necessário.",
     );
   });
@@ -1081,7 +1081,7 @@ describe("runScan", () => {
     const finding = await prisma.wasteFinding.findFirstOrThrow({
       where: { subscriptionId: subscription.id, resourceId: "disk-tt-6", ruleType: "DISK_PREMIUM_TIER_UNNECESSARY" },
     });
-    expect(finding.suggestedActionSummary).toBe(
+    expect(finding.suggestedActionSummary).toContain(
       "troque para um disco Standard SSD equivalente (economia estimada de $15.00/mês) e exclua o disco quando ele não for mais necessário.",
     );
     expect(suggestVmSku).not.toHaveBeenCalled();
@@ -1113,7 +1113,7 @@ describe("runScan", () => {
     const finding = await prisma.wasteFinding.findFirstOrThrow({
       where: { subscriptionId: subscription.id, resourceId: "disk-tt-7", ruleType: "DISK_PREMIUM_V2_OVERSIZED" },
     });
-    expect(finding.suggestedActionSummary).toBe(
+    expect(finding.suggestedActionSummary).toContain(
       "reduza o consumo do recurso quando a carga permitir e exclua o recurso quando ele não for mais necessário.",
     );
   });

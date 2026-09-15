@@ -121,6 +121,7 @@ import {
 } from "@/lib/waste-rules/savingsEstimate";
 import { suggestVmSku } from "@/lib/waste-rules/vmSkuSuggestion";
 import { suggestDiskTier } from "@/lib/waste-rules/diskTierSuggestion";
+import { buildCatalogRecommendation } from "@/lib/waste-rules/catalogRecommendation";
 import { explainFinding, type FindingFacts } from "@/lib/ai/findingExplainer";
 import type { WasteFindingCandidate } from "@/lib/waste-rules/types";
 import { translate } from "@/lib/i18n/dictionaries";
@@ -600,6 +601,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       }
 
       let suggestedActionSummary: string | null = null;
+      let alternativeName: string | undefined;
       try {
         const resourceTypeLower = resource?.type?.toLowerCase() ?? "";
         const isCompute =
@@ -637,6 +639,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
               storageProfile?.osDisk?.osType === "Windows",
             );
             if (suggestion) {
+              alternativeName = suggestion.skuName;
               reductionActions.push(
                 `reduza o consumo para ${suggestion.skuName} (economia estimada de $${suggestion.monthlySavings.toFixed(2)}/mês)`,
               );
@@ -650,6 +653,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         } else if (candidate.ruleType === "DISK_TIER_OVERSIZED" && resource) {
           const suggestion = await suggestDiskTier(resource);
           if (suggestion) {
+            alternativeName = `disco de ${suggestion.suggestedSizeGb} GiB`;
             reductionActions.push(
               `reduza o disco para ${suggestion.suggestedSizeGb} GiB (economia estimada de $${suggestion.monthlySavings.toFixed(2)}/mês)`,
             );
@@ -731,6 +735,14 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         suggestedActionSummary = buildCombinedSuggestionSummary({
           reductionActions,
           complementaryActions,
+        });
+        suggestedActionSummary = buildCatalogRecommendation({
+          candidate,
+          resource,
+          currentCost: estimatedMonthlyCost,
+          monthlySavings: estimatedMonthlySavings,
+          alternativeName,
+          existingActions: suggestedActionSummary,
         });
       } catch (error) {
         console.error(`Action summary generation failed for ${candidate.resourceId}`, error);
