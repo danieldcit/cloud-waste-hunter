@@ -22,7 +22,9 @@ describe("getSubscriptionMonthToDateSpend", () => {
     const [url, init] = spy.mock.calls[0];
     expect(url).toContain("/subscriptions/sub-1/providers/Microsoft.CostManagement/query");
     const body = JSON.parse(init!.body as string);
-    expect(body.timeframe).toBe("MonthToDate");
+    expect(body.timeframe).toBe("Custom");
+    expect(body.timePeriod.from).toEqual(expect.any(String));
+    expect(body.timePeriod.to).toEqual(expect.any(String));
     expect(body.dataset.filter).toBeUndefined();
   });
 

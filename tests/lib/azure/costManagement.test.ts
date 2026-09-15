@@ -20,6 +20,36 @@ describe("estimateMonthlyCost", () => {
     expect(cost).toBe(12.5);
   });
 
+  it("uses a custom 30-day period instead of the unsupported TheLastMonth timeframe", async () => {
+    const armFetch = vi.spyOn(armFetchModule, "armFetch").mockResolvedValue({
+      properties: {
+        columns: [{ name: "Cost" }],
+        rows: [[8.4]],
+      },
+    });
+
+    await estimateMonthlyCost("sub-1", "app-service-1");
+
+    const request = armFetch.mock.calls[0]?.[1];
+    const body = JSON.parse(String(request?.body));
+    expect(body.timeframe).toBe("Custom");
+    expect(body.timePeriod.from).toEqual(expect.any(String));
+    expect(body.timePeriod.to).toEqual(expect.any(String));
+    expect(body.dataset.filter.dimensions.values).toEqual(["app-service-1"]);
+  });
+
+  it("retries throttled cost queries before failing", async () => {
+    const armFetch = vi
+      .spyOn(armFetchModule, "armFetch")
+      .mockRejectedValueOnce(new Error("failed with 429: throttled"))
+      .mockResolvedValueOnce({
+        properties: { columns: [{ name: "Cost" }], rows: [[4.2]] },
+      });
+
+    await expect(estimateMonthlyCost("sub-1", "app-service-1")).resolves.toBe(4.2);
+    expect(armFetch).toHaveBeenCalledTimes(2);
+  });
+
   it("returns 0 when there are no rows", async () => {
     vi.spyOn(armFetchModule, "armFetch").mockResolvedValue({
       properties: { columns: [{ name: "Cost" }], rows: [] },

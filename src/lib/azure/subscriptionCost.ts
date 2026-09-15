@@ -1,10 +1,31 @@
 import { armFetch } from "@/lib/azure/armFetch";
 
+const MAX_COST_QUERY_RETRIES = 3;
+
 interface CostQueryResponse {
   properties: {
     columns: { name: string }[];
     rows: (string | number)[][];
   };
+}
+
+async function costFetch<T>(url: string, init: RequestInit): Promise<T> {
+  for (let attempt = 0; attempt < MAX_COST_QUERY_RETRIES; attempt += 1) {
+    try {
+      return await armFetch<T>(url, init);
+    } catch (error) {
+      if (attempt === MAX_COST_QUERY_RETRIES - 1 || !String(error).includes(" 429:")) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+    }
+  }
+  throw new Error(`Cost query returned no response for ${url}`);
+}
+
+function monthToDatePeriod(now = new Date()): { from: string; to: string } {
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  return { from: from.toISOString(), to: now.toISOString() };
 }
 
 export interface DailyCost {
@@ -24,11 +45,12 @@ export async function getSubscriptionMonthToDateSpend(
   azureSubscriptionId: string,
 ): Promise<number> {
   const url = `https://management.azure.com/subscriptions/${azureSubscriptionId}/providers/Microsoft.CostManagement/query?api-version=2023-11-01`;
-  const response = await armFetch<CostQueryResponse>(url, {
+  const response = await costFetch<CostQueryResponse>(url, {
     method: "POST",
     body: JSON.stringify({
       type: "ActualCost",
-      timeframe: "MonthToDate",
+      timeframe: "Custom",
+      timePeriod: monthToDatePeriod(),
       dataset: {
         granularity: "None",
         aggregation: { totalCost: { name: "Cost", function: "Sum" } },
@@ -42,7 +64,7 @@ export async function getSubscriptionForecast(
   azureSubscriptionId: string,
 ): Promise<number> {
   const url = `https://management.azure.com/subscriptions/${azureSubscriptionId}/providers/Microsoft.CostManagement/forecast?api-version=2023-11-01`;
-  const response = await armFetch<CostQueryResponse>(url, {
+  const response = await costFetch<CostQueryResponse>(url, {
     method: "POST",
     body: JSON.stringify({
       type: "ActualCost",
@@ -71,7 +93,7 @@ export async function getSubscriptionDailyCostTrend(
 ): Promise<DailyCost[]> {
   const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
   const url = `https://management.azure.com/subscriptions/${azureSubscriptionId}/providers/Microsoft.CostManagement/query?api-version=2023-11-01`;
-  const response = await armFetch<CostQueryResponse>(url, {
+  const response = await costFetch<CostQueryResponse>(url, {
     method: "POST",
     body: JSON.stringify({
       type: "ActualCost",
