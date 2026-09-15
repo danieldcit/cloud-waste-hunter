@@ -3,7 +3,13 @@
 import { useMemo, useState } from "react";
 import type { FindingStatus, WasteRuleType } from "@prisma/client";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
-import { categoryForRule, impactForCost, type DashboardCategory } from "@/lib/dashboard-categories";
+import {
+  categoryForRule,
+  costManagementSubcategoryForRule,
+  impactForCost,
+  type CostManagementSubcategory,
+  type DashboardCategory,
+} from "@/lib/dashboard-categories";
 import { CostTrendChart } from "@/components/dashboard/CostTrendChart";
 import { AppHeader } from "@/components/AppHeader";
 
@@ -48,6 +54,8 @@ export function DashboardClient({
 }) {
   const { t } = useLocale();
   const [categoryFilter, setCategoryFilter] = useState<DashboardCategory | "all">("all");
+  const [costSubcategoryFilter, setCostSubcategoryFilter] =
+    useState<CostManagementSubcategory | "all">("all");
   const [search, setSearch] = useState("");
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState(
     subscriptions[0]?.id ?? "",
@@ -60,6 +68,13 @@ export function DashboardClient({
     const term = search.trim().toLowerCase();
     return visibleFindings.filter((f) => {
       if (categoryFilter !== "all" && categoryForRule(f.ruleType) !== categoryFilter) {
+        return false;
+      }
+      if (
+        categoryFilter === "costManagement" &&
+        costSubcategoryFilter !== "all" &&
+        costManagementSubcategoryForRule(f.ruleType) !== costSubcategoryFilter
+      ) {
         return false;
       }
       if (!term) {
@@ -142,12 +157,15 @@ export function DashboardClient({
           </section>
         </div>
 
-        <div className="mb-4 flex gap-2">
-          {(["all", "storage", "compute", "network"] as const).map((category) => (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {(["all", "compute", "storage", "network", "databases", "containers", "dataAi", "costManagement"] as const).map((category) => (
             <button
               key={category}
               type="button"
-              onClick={() => setCategoryFilter(category)}
+              onClick={() => {
+                setCategoryFilter(category);
+                setCostSubcategoryFilter("all");
+              }}
               className={`rounded px-3 py-1 text-sm ${
                 categoryFilter === category
                   ? "bg-blue-600 text-white"
@@ -158,6 +176,25 @@ export function DashboardClient({
             </button>
           ))}
         </div>
+
+        {categoryFilter === "costManagement" && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {(["all", "licensing", "reservations", "savingsPlans", "devTest", "schedule", "cleanup", "anomalies", "forecastBudget", "architecture", "roi"] as const).map((subcategory) => (
+              <button
+                key={subcategory}
+                type="button"
+                onClick={() => setCostSubcategoryFilter(subcategory)}
+                className={`rounded px-3 py-1 text-xs ${
+                  costSubcategoryFilter === subcategory
+                    ? "bg-slate-700 text-white"
+                    : "border border-gray-300 dark:border-gray-600"
+                }`}
+              >
+                {subcategory === "all" ? t("filters.all") : t(`cost.${subcategory}`)}
+              </button>
+            ))}
+          </div>
+        )}
 
         <table className="w-full border-collapse text-sm">
           <thead>

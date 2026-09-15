@@ -27,6 +27,19 @@ import { findOutdatedVmssSkus } from "@/lib/waste-rules/vmssOutdatedSku";
 import { findVmssOutdatedModelInstances } from "@/lib/waste-rules/vmssOutdatedModelInstances";
 import { findVmssSpotEligible } from "@/lib/waste-rules/vmssSpotEligible";
 import { findVmssMissingSavingsPlanOrReservation } from "@/lib/waste-rules/vmssMissingSavingsPlanOrReservation";
+import {
+  findVmMissingCommitmentCoverage,
+  findOrphanedNatGateways,
+  findDevTestSpotEligible,
+  findSchedulesRequiredButMissing,
+  findArchitectureReviewCandidates,
+  findAutomationExpiredResources,
+  findCostAnomalyCandidates,
+  findForecastActionableCandidates,
+  findUnitEconomicsCandidates,
+  findRoiPrioritizationCandidates,
+  type CostSnapshotEvidence,
+} from "@/lib/waste-rules/finops34To43";
 import { findAvdSessionHostLowUtilization } from "@/lib/waste-rules/avdSessionHostLowUtilization";
 import { findAvdHostPoolExcessHosts } from "@/lib/waste-rules/avdHostPoolExcessHosts";
 import { findAvdHostPoolLowDensity } from "@/lib/waste-rules/avdHostPoolLowDensity";
@@ -55,6 +68,52 @@ import {
   findAzureFilesFslogixOversized,
   findAzureFilesAlternativeService,
 } from "@/lib/waste-rules/azureFiles";
+import {
+  findStorageAccountsWithRecommendedRedundancy,
+  findUnusedStorageAccounts,
+} from "@/lib/waste-rules/storageComplementary";
+import {
+  findBackupVaultsUnused,
+  findOrphanedBackupItems,
+  findOldRecoveryPoints,
+  findExcessiveBackupRetention,
+} from "@/lib/waste-rules/backupRecovery";
+import {
+  findIdleAzureFirewalls,
+  findExcessiveEgress,
+} from "@/lib/waste-rules/networkAndEgress";
+import {
+  findOverprovisionedSqlDatabases,
+  findOverprovisionedSqlManagedInstances,
+  findOverprovisionedFlexibleDatabases,
+  findLowUtilizationCosmosDb,
+  findLowUtilizationRedisCaches,
+} from "@/lib/waste-rules/dataServices";
+import {
+  findLowUtilizationAksClusters,
+  findIdleContainerApps,
+  findLowUtilizationAppServices,
+  findLowUtilizationFunctions,
+} from "@/lib/waste-rules/applicationServices";
+import {
+  findUnusedMonitorWorkspaces,
+  findIdleIoTHubs,
+} from "@/lib/waste-rules/monitorAndIot";
+import {
+  findIdleIoTEdgeResources,
+  findIdleDataFactories,
+  findIdleDatabricksWorkspaces,
+  findIdleSynapseWorkspaces,
+  findIdlePowerBiFabricResources,
+  findIdleStreamAnalyticsJobs,
+  findIdleEventHubs,
+  findIdleServiceBusNamespaces,
+  findIdleStorageQueues,
+  findIdleCdnFrontDoorResources,
+  findIdleApiManagementServices,
+  findDisabledLogicApps,
+  findIdleAutomationAccounts,
+} from "@/lib/waste-rules/dataIntegrationServices";
 import { isSessionHost, underlyingVm } from "@/lib/waste-rules/avdSessionHosts";
 import {
   buildCombinedSuggestionSummary,
@@ -84,13 +143,56 @@ export const COMBINED_QUERY_TYPES = [
   "microsoft.compute/galleries/images/versions",
   "microsoft.storage/storageaccounts",
   "microsoft.storage/storageaccounts/fileservices/shares",
+  "microsoft.recoveryservices/vaults",
+  "microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems",
+  "microsoft.recoveryservices/vaults/backuppolicies",
+  "microsoft.network/azurefirewalls",
+  "microsoft.network/natgateways",
+  "microsoft.network/networkinterfaces",
+  "microsoft.network/networksecuritygroups",
+  "microsoft.network/applicationgateways",
+  "microsoft.sql/servers/databases",
+  "microsoft.sql/managedinstances",
+  "microsoft.dbforpostgresql/flexibleservers",
+  "microsoft.dbformysql/flexibleservers",
+  "microsoft.documentdb/databaseaccounts",
+  "microsoft.cache/redis",
+  "microsoft.containerservice/managedclusters",
+  "microsoft.app/containerapps",
+  "microsoft.web/sites",
+  "microsoft.operationalinsights/workspaces",
+  "microsoft.devices/iothubs",
+  "microsoft.devices/iothubs/devices/modules",
+  "microsoft.devices/iothubs/edge",
+  "microsoft.devices/iothubs/edgemodules",
+  "microsoft.datafactory/factories",
+  "microsoft.databricks/workspaces",
+  "microsoft.synapse/workspaces",
+  "microsoft.powerbi/workspaces",
+  "microsoft.powerbi/capacities",
+  "microsoft.powerbi/tenants/workspaces",
+  "microsoft.fabric/capacities",
+  "microsoft.streamanalytics/streamingjobs",
+  "microsoft.eventhub/namespaces",
+  "microsoft.eventhub/namespaces/eventhubs",
+  "microsoft.servicebus/namespaces",
+  "microsoft.storage/storageaccounts/queues",
+  "microsoft.storage/storageaccounts/queueservices/queues",
+  "microsoft.cdn/profiles",
+  "microsoft.cdn/profiles/endpoints",
+  "microsoft.cdn/profiles/afdendpoints",
+  "microsoft.network/frontdoors",
+  "microsoft.network/frontdoors/frontendendpoints",
+  "microsoft.apimanagement/service",
+  "microsoft.logic/workflows",
+  "microsoft.automation/automationaccounts",
 ];
 
 const COMBINED_QUERY = `
 Resources
 | where type in (${COMBINED_QUERY_TYPES.map((t) => `'${t}'`).join(", ")})
 | extend powerState = tostring(properties.extended.instanceView.powerState.code)
-| project id, type, subscriptionId, location, sku, properties, powerState
+| project id, type, subscriptionId, location, sku, tags, properties, powerState
 `;
 
 async function captureCostSnapshot(
@@ -104,9 +206,18 @@ async function captureCostSnapshot(
       getSubscriptionDailyCostTrend(azureSubscriptionId),
     ]);
 
-    const monthToDateSpend = mtdResult.status === "fulfilled" ? mtdResult.value : 0;
-    const projectedSpend = forecastResult.status === "fulfilled" ? forecastResult.value : 0;
-    const dailyTrend = trendResult.status === "fulfilled" ? trendResult.value : [];
+    const monthToDateSpend =
+      mtdResult.status === "fulfilled" && Number.isFinite(mtdResult.value)
+        ? mtdResult.value
+        : 0;
+    const projectedSpend =
+      forecastResult.status === "fulfilled" && Number.isFinite(forecastResult.value)
+        ? forecastResult.value
+        : 0;
+    const dailyTrend =
+      trendResult.status === "fulfilled" && Array.isArray(trendResult.value)
+        ? trendResult.value
+        : [];
 
     if (mtdResult.status === "rejected") {
       console.error(
@@ -203,6 +314,26 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
     // no re-open path) marks every finding of that rule type RESOLVED, fabricating
     // "savings already realized" figures in the customer-facing PDF report.
     const degradedRuleTypes = new Set<WasteRuleType>();
+    let previousCostSnapshot: CostSnapshotEvidence | undefined;
+    try {
+      const snapshot = await prisma.costSnapshot.findFirst({
+        where: { subscriptionId: subscription.id },
+        orderBy: { capturedAt: "desc" },
+      });
+      if (snapshot) {
+        previousCostSnapshot = {
+          capturedAt: snapshot.capturedAt,
+          monthToDateSpend: snapshot.monthToDateSpend,
+          projectedSpend: snapshot.projectedSpend,
+          dailyTrend: snapshot.dailyTrend,
+        };
+      }
+    } catch (error) {
+      console.error(
+        "Previous cost snapshot could not be loaded; snapshot-based FinOps rules will be skipped",
+        error,
+      );
+    }
 
     let idleVmCandidates: WasteFindingCandidate[] = [];
     try {
@@ -235,6 +366,58 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         error,
       );
       degradedRuleTypes.add("VMSS_MISSING_SAVINGS_PLAN_OR_RESERVATION");
+    }
+
+    let vmCommitmentCandidates: WasteFindingCandidate[] = [];
+    try {
+      vmCommitmentCandidates = await findVmMissingCommitmentCoverage(resources);
+    } catch (error) {
+      console.error(
+        "VM commitment-coverage rule failed; treating as zero findings for this scan",
+        error,
+      );
+      degradedRuleTypes.add("VM_MISSING_COMMITMENT_COVERAGE");
+    }
+
+    let costAnomalyCandidates: WasteFindingCandidate[] = [];
+    try {
+      costAnomalyCandidates = findCostAnomalyCandidates(resources, previousCostSnapshot);
+    } catch (error) {
+      console.error("Cost anomaly rule failed; treating as zero findings for this scan", error);
+      degradedRuleTypes.add("COST_ANOMALY_DETECTED");
+    }
+
+    let forecastActionableCandidates: WasteFindingCandidate[] = [];
+    try {
+      forecastActionableCandidates = findForecastActionableCandidates(
+        resources,
+        previousCostSnapshot,
+      );
+    } catch (error) {
+      console.error(
+        "Forecast actionable rule failed; treating as zero findings for this scan",
+        error,
+      );
+      degradedRuleTypes.add("FORECAST_ACTIONABLE_FINDING");
+    }
+
+    let unitEconomicsCandidates: WasteFindingCandidate[] = [];
+    try {
+      unitEconomicsCandidates = findUnitEconomicsCandidates(resources);
+    } catch (error) {
+      console.error("Unit economics rule failed; treating as zero findings for this scan", error);
+      degradedRuleTypes.add("UNIT_ECONOMICS_REVIEW");
+    }
+
+    let roiPrioritizationCandidates: WasteFindingCandidate[] = [];
+    try {
+      roiPrioritizationCandidates = findRoiPrioritizationCandidates(resources);
+    } catch (error) {
+      console.error(
+        "ROI prioritization rule failed; treating as zero findings for this scan",
+        error,
+      );
+      degradedRuleTypes.add("ROI_PRIORITIZATION");
     }
 
     let diskIdleCandidates: WasteFindingCandidate[] = [];
@@ -301,6 +484,16 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       ...findVmssOutdatedModelInstances(resources),
       ...findVmssSpotEligible(resources),
       ...missingReservationCandidates,
+      ...vmCommitmentCandidates,
+      ...findOrphanedNatGateways(resources),
+      ...findDevTestSpotEligible(resources),
+      ...findSchedulesRequiredButMissing(resources),
+      ...findArchitectureReviewCandidates(resources),
+      ...findAutomationExpiredResources(resources),
+      ...costAnomalyCandidates,
+      ...forecastActionableCandidates,
+      ...unitEconomicsCandidates,
+      ...roiPrioritizationCandidates,
       ...findAvdSessionHostLowUtilization(resources),
       ...findAvdHostPoolExcessHosts(resources),
       ...findAvdHostPoolLowDensity(resources),
@@ -327,6 +520,38 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       ...findAzureFilesDuplicated(resources),
       ...findAzureFilesFslogixOversized(resources),
       ...findAzureFilesAlternativeService(resources),
+      ...findUnusedStorageAccounts(resources),
+      ...findStorageAccountsWithRecommendedRedundancy(resources),
+      ...findBackupVaultsUnused(resources),
+      ...findOrphanedBackupItems(resources),
+      ...findOldRecoveryPoints(resources),
+      ...findExcessiveBackupRetention(resources),
+      ...findIdleAzureFirewalls(resources),
+      ...findExcessiveEgress(resources),
+      ...findOverprovisionedSqlDatabases(resources),
+      ...findOverprovisionedSqlManagedInstances(resources),
+      ...findOverprovisionedFlexibleDatabases(resources),
+      ...findLowUtilizationCosmosDb(resources),
+      ...findLowUtilizationRedisCaches(resources),
+      ...findLowUtilizationAksClusters(resources),
+      ...findIdleContainerApps(resources),
+      ...findLowUtilizationAppServices(resources),
+      ...findLowUtilizationFunctions(resources),
+      ...findUnusedMonitorWorkspaces(resources),
+      ...findIdleIoTHubs(resources),
+      ...findIdleIoTEdgeResources(resources),
+      ...findIdleDataFactories(resources),
+      ...findIdleDatabricksWorkspaces(resources),
+      ...findIdleSynapseWorkspaces(resources),
+      ...findIdlePowerBiFabricResources(resources),
+      ...findIdleStreamAnalyticsJobs(resources),
+      ...findIdleEventHubs(resources),
+      ...findIdleServiceBusNamespaces(resources),
+      ...findIdleStorageQueues(resources),
+      ...findIdleCdnFrontDoorResources(resources),
+      ...findIdleApiManagementServices(resources),
+      ...findDisabledLogicApps(resources),
+      ...findIdleAutomationAccounts(resources),
     ];
 
     const resourceById = new Map<string, ResourceGraphRow>(
@@ -413,7 +638,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
             );
             if (suggestion) {
               reductionActions.push(
-                `redimensione a VM/VMSS para ${suggestion.skuName} (SKU menor, economia estimada de $${suggestion.monthlySavings.toFixed(2)}/mês)`,
+                `reduza o consumo para ${suggestion.skuName} (economia estimada de $${suggestion.monthlySavings.toFixed(2)}/mês)`,
               );
             } else {
               reductionActions.push("reduza o consumo do recurso quando a carga permitir");
@@ -441,6 +666,18 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
             reductionActions.push("reduza o consumo do disco quando a carga permitir");
           }
           complementaryActions.push("exclua o disco quando ele não for mais necessário");
+        } else if (candidate.ruleType === "COST_ANOMALY_DETECTED") {
+          reductionActions.push("investigue a variação de custo com os dados do Cost Management antes de alterar recursos");
+          complementaryActions.push("confirme a causa e aplique a correção somente após validar a carga");
+        } else if (candidate.ruleType === "FORECAST_ACTIONABLE_FINDING") {
+          reductionActions.push("revise os principais contribuintes do forecast e o orçamento aprovado");
+          complementaryActions.push("ajuste o consumo apenas após confirmar o impacto operacional");
+        } else if (candidate.ruleType === "UNIT_ECONOMICS_REVIEW") {
+          reductionActions.push("revise o custo por unidade e a capacidade provisionada conforme a meta informada");
+          complementaryActions.push("valide a métrica de negócio antes de redimensionar ou desligar o recurso");
+        } else if (candidate.ruleType === "ROI_PRIORITIZATION") {
+          reductionActions.push("priorize a iniciativa com base no ROI informado e na criticidade do workload");
+          complementaryActions.push("confirme o custo de implementação antes de aprovar a mudança");
         } else if (candidate.ruleType === "AZURE_FILES_OLD_HOT_TIER" || candidate.ruleType === "AZURE_FILES_COOL_TIER_UNUSED") {
           reductionActions.push("mova os dados antigos para Cool, Cold ou Archive quando a política de acesso permitir");
           complementaryActions.push("exclua os dados que não forem mais necessários");
@@ -462,6 +699,24 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         } else if (candidate.ruleType === "AZURE_FILES_PROTECTION_EXCESSIVE") {
           reductionActions.push("reduza a retenção de backup, snapshot ou Soft Delete conforme a política");
           complementaryActions.push("exclua a proteção excedente quando não houver requisito de retenção");
+        } else if (candidate.ruleType === "STORAGE_ACCOUNT_UNUSED") {
+          reductionActions.push("confirme as dependências e remova o Storage Account explicitamente sem uso");
+          complementaryActions.push("valide locks, diagnósticos e requisitos de recuperação antes da remoção");
+        } else if (candidate.ruleType === "STORAGE_ACCOUNT_REDUNDANCY_MISMATCH") {
+          reductionActions.push("avalie alterar o SKU ou a redundância para a recomendação explícita");
+          complementaryActions.push("valide os requisitos de resiliência e o impacto operacional antes da mudança");
+        } else if (candidate.ruleType === "BACKUP_VAULT_UNUSED") {
+          reductionActions.push("reduza a retenção e a capacidade de proteção após confirmar que não há workloads dependentes");
+          complementaryActions.push("exclua o Recovery Services Vault somente após validar que ele não é necessário");
+        } else if (candidate.ruleType === "BACKUP_ORPHANED_ITEM") {
+          reductionActions.push("reduza a retenção dos recovery points órfãos conforme a política de recuperação");
+          complementaryActions.push("exclua o item de backup órfão após confirmar que o recurso de origem foi desativado");
+        } else if (candidate.ruleType === "BACKUP_OLD_RECOVERY_POINT") {
+          reductionActions.push("reduza a retenção e remova recovery points antigos conforme o RPO/RTO");
+          complementaryActions.push("exclua os recovery points que não forem mais necessários");
+        } else if (candidate.ruleType === "BACKUP_RETENTION_EXCESSIVE") {
+          reductionActions.push("reduza o período de retenção para o mínimo compatível com a política de recuperação");
+          complementaryActions.push("exclua backups excedentes após validar os requisitos de compliance");
         } else if (!isCompute && !isStorage) {
           reductionActions.push("reduza o consumo do recurso quando a carga permitir");
           complementaryActions.push("exclua ou isole o recurso quando ele não for mais necessário");

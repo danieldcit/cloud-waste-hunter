@@ -99,6 +99,27 @@ describe("COMBINED_QUERY resource types", () => {
       ]),
     );
   });
+
+  it("includes the FinOps categories 21-33 resource types", async () => {
+    const { COMBINED_QUERY_TYPES } = await import("@/lib/scanner/runScan");
+    expect(COMBINED_QUERY_TYPES).toEqual(
+      expect.arrayContaining([
+        "microsoft.devices/iothubs/devices/modules",
+        "microsoft.datafactory/factories",
+        "microsoft.databricks/workspaces",
+        "microsoft.synapse/workspaces",
+        "microsoft.fabric/capacities",
+        "microsoft.streamanalytics/streamingjobs",
+        "microsoft.eventhub/namespaces",
+        "microsoft.servicebus/namespaces",
+        "microsoft.storage/storageaccounts/queueservices/queues",
+        "microsoft.cdn/profiles",
+        "microsoft.apimanagement/service",
+        "microsoft.logic/workflows",
+        "microsoft.automation/automationaccounts",
+      ]),
+    );
+  });
 });
 
 describe("runScan", () => {
@@ -140,6 +161,50 @@ describe("runScan", () => {
       ruleType: "ORPHANED_DISK",
       resourceId: "disk-1",
       estimatedMonthlyCost: 9.99,
+    });
+  });
+
+  it("uses the previous cost snapshot for an anchored anomaly finding", async () => {
+    const customer = await prisma.customer.create({
+      data: { entraTenantId: "tenant-anomaly", name: "Anomaly" },
+    });
+    const subscription = await prisma.subscription.create({
+      data: { customerId: customer.id, azureSubscriptionId: "sub-anomaly", displayName: "Prod" },
+    });
+    await prisma.costSnapshot.create({
+      data: {
+        subscriptionId: subscription.id,
+        monthToDateSpend: 100,
+        projectedSpend: 120,
+        dailyTrend: [
+          { date: "2026-09-01", cost: 10 },
+          { date: "2026-09-02", cost: 11 },
+          { date: "2026-09-03", cost: 30 },
+        ],
+      },
+    });
+
+    vi.mocked(queryResourceGraph).mockResolvedValue([
+      {
+        id: "vm-anomaly-anchor",
+        type: "microsoft.compute/virtualmachines",
+        subscriptionId: "sub-anomaly",
+        properties: { hardwareProfile: { vmSize: "Standard_B2s" } },
+        tags: { finopsAnomalyDetection: "true" },
+      },
+    ]);
+    vi.mocked(estimateMonthlyCost).mockResolvedValue(25);
+
+    await runScan(subscription.id);
+
+    const finding = await prisma.wasteFinding.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, ruleType: "COST_ANOMALY_DETECTED" },
+    });
+    expect(finding).toMatchObject({
+      resourceId: "vm-anomaly-anchor",
+      metricObserved: 30 / 10.5,
+      periodAnalyzedDays: 3,
+      estimatedMonthlySavings: null,
     });
   });
 

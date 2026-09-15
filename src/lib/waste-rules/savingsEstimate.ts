@@ -19,6 +19,7 @@ type SavingsMethod =
   | "reservation_recommendation"
   | "premium_disk_delta"
   | "scaling_window_delta"
+  | "commitment_recommendation"
   | "unknown";
 
 /** Fraction of hours a VMSS's CPU must sit below this to count toward its "off-hours" savings estimate. */
@@ -77,6 +78,48 @@ const SAVINGS_METHOD_BY_RULE: Record<WasteRuleType, SavingsMethod> = {
   AZURE_FILES_DUPLICATED: "full_cost",
   AZURE_FILES_FSLOGIX_OVERSIZED: "unknown",
   AZURE_FILES_ALTERNATIVE_SERVICE_CHEAPER: "unknown",
+  STORAGE_ACCOUNT_UNUSED: "full_cost",
+  STORAGE_ACCOUNT_REDUNDANCY_MISMATCH: "unknown",
+  BACKUP_VAULT_UNUSED: "unknown",
+  BACKUP_ORPHANED_ITEM: "unknown",
+  BACKUP_OLD_RECOVERY_POINT: "unknown",
+  BACKUP_RETENTION_EXCESSIVE: "unknown",
+  NETWORK_FIREWALL_IDLE: "full_cost",
+  EGRESS_TRANSFER_EXCESSIVE: "full_cost",
+  SQL_DATABASE_OVERPROVISIONED: "full_cost",
+  SQL_MANAGED_INSTANCE_OVERPROVISIONED: "full_cost",
+  POSTGRES_MYSQL_OVERPROVISIONED: "full_cost",
+  COSMOS_DB_LOW_UTILIZATION: "full_cost",
+  REDIS_LOW_UTILIZATION: "full_cost",
+  AKS_CLUSTER_LOW_UTILIZATION: "full_cost",
+  CONTAINER_APPS_IDLE: "full_cost",
+  APP_SERVICE_LOW_UTILIZATION: "full_cost",
+  FUNCTIONS_LOW_UTILIZATION: "full_cost",
+  MONITOR_LOG_ANALYTICS_UNUSED: "full_cost",
+  IOT_HUB_IDLE: "full_cost",
+  IOT_EDGE_IDLE: "full_cost",
+  DATA_FACTORY_IDLE: "full_cost",
+  DATABRICKS_IDLE: "full_cost",
+  SYNAPSE_IDLE: "full_cost",
+  POWER_BI_FABRIC_IDLE: "full_cost",
+  STREAM_ANALYTICS_IDLE: "full_cost",
+  EVENT_HUBS_IDLE: "full_cost",
+  SERVICE_BUS_IDLE: "full_cost",
+  STORAGE_QUEUE_IDLE: "full_cost",
+  CDN_FRONT_DOOR_IDLE: "full_cost",
+  API_MANAGEMENT_IDLE: "full_cost",
+  LOGIC_APP_DISABLED: "full_cost",
+  AUTOMATION_ACCOUNT_IDLE: "full_cost",
+  VM_MISSING_COMMITMENT_COVERAGE: "commitment_recommendation",
+  ORPHANED_NAT_GATEWAY: "full_cost",
+  DEVTEST_SPOT_ELIGIBLE: "unknown",
+  SCHEDULE_REQUIRED_BUT_MISSING: "unknown",
+  ARCHITECTURE_REVIEW_REQUIRED: "unknown",
+  COST_ANOMALY_DETECTED: "unknown",
+  FORECAST_ACTIONABLE_FINDING: "unknown",
+  UNIT_ECONOMICS_REVIEW: "unknown",
+  AUTOMATION_EXPIRED_RESOURCE: "full_cost",
+  ROI_PRIORITIZATION: "unknown",
 };
 
 /**
@@ -111,6 +154,8 @@ export async function estimateMonthlySavings(
     case "spot_delta":
       return resource ? estimateVmssSpotMonthlySavings(resource) : null;
     case "reservation_recommendation":
+      return estimateReservationCoverageMonthlySavings(candidate.subscriptionId, resource);
+    case "commitment_recommendation":
       return estimateReservationCoverageMonthlySavings(candidate.subscriptionId, resource);
     case "premium_disk_delta":
       return resource ? estimatePremiumDiskDowngradeMonthlySavings(resource) : null;

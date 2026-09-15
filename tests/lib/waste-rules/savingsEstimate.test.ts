@@ -187,6 +187,10 @@ describe("estimateMonthlySavings", () => {
     "VMSS_SCALEOUT_METRIC_INADEQUATE",
     "VMSS_OUTDATED_SKU_GENERATION",
     "VMSS_OUTDATED_MODEL_INSTANCES",
+    "COST_ANOMALY_DETECTED",
+    "FORECAST_ACTIONABLE_FINDING",
+    "UNIT_ECONOMICS_REVIEW",
+    "ROI_PRIORITIZATION",
   ] as const)("returns null for %s, since no number can be estimated yet", async (ruleType) => {
     const candidate: WasteFindingCandidate = {
       ruleType,
