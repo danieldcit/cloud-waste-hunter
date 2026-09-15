@@ -43,6 +43,11 @@ const CATEGORY_BY_RULE: Record<WasteRuleType, DashboardCategory> = {
   AZURE_FILES_PREMIUM_OVERSIZED: "storage",
   AZURE_FILES_QUOTA_OVERSIZED: "storage",
   AZURE_FILES_PROTECTION_EXCESSIVE: "storage",
+  AZURE_FILES_OLD_HOT_TIER: "storage",
+  AZURE_FILES_COOL_TIER_UNUSED: "storage",
+  AZURE_FILES_DUPLICATED: "storage",
+  AZURE_FILES_FSLOGIX_OVERSIZED: "storage",
+  AZURE_FILES_ALTERNATIVE_SERVICE_CHEAPER: "storage",
 };
 
 export function categoryForRule(ruleType: WasteRuleType): DashboardCategory {

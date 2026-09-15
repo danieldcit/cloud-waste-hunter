@@ -49,6 +49,11 @@ import {
   findAzureFilesQuotaOversized,
   findAzureFilesProtectionExcessive,
   findAzureFilesUnusedShares,
+  findAzureFilesOldHotTier,
+  findAzureFilesCoolTierUnused,
+  findAzureFilesDuplicated,
+  findAzureFilesFslogixOversized,
+  findAzureFilesAlternativeService,
 } from "@/lib/waste-rules/azureFiles";
 import { isSessionHost, underlyingVm } from "@/lib/waste-rules/avdSessionHosts";
 import {
@@ -317,6 +322,11 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       ...findAzureFilesPremiumOversized(resources),
       ...findAzureFilesQuotaOversized(resources),
       ...findAzureFilesProtectionExcessive(resources),
+      ...findAzureFilesOldHotTier(resources),
+      ...findAzureFilesCoolTierUnused(resources),
+      ...findAzureFilesDuplicated(resources),
+      ...findAzureFilesFslogixOversized(resources),
+      ...findAzureFilesAlternativeService(resources),
     ];
 
     const resourceById = new Map<string, ResourceGraphRow>(
@@ -373,7 +383,8 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         const isStorage =
           resourceTypeLower.includes("disk") ||
           resourceTypeLower.includes("snapshot") ||
-          resourceTypeLower.includes("image");
+          resourceTypeLower.includes("image") ||
+          resourceTypeLower.includes("storageaccounts");
 
         const reductionActions: string[] = [];
         const complementaryActions: string[] = [];
@@ -430,6 +441,27 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
             reductionActions.push("reduza o consumo do disco quando a carga permitir");
           }
           complementaryActions.push("exclua o disco quando ele não for mais necessário");
+        } else if (candidate.ruleType === "AZURE_FILES_OLD_HOT_TIER" || candidate.ruleType === "AZURE_FILES_COOL_TIER_UNUSED") {
+          reductionActions.push("mova os dados antigos para Cool, Cold ou Archive quando a política de acesso permitir");
+          complementaryActions.push("exclua os dados que não forem mais necessários");
+        } else if (candidate.ruleType === "AZURE_FILES_DUPLICATED") {
+          reductionActions.push("mantenha uma única cópia validada e remova a duplicata após confirmação");
+          complementaryActions.push("exclua o File Share duplicado quando ele não for mais necessário");
+        } else if (candidate.ruleType === "AZURE_FILES_FSLOGIX_OVERSIZED") {
+          reductionActions.push("reduza a quota do FSLogix para a capacidade realmente utilizada");
+          complementaryActions.push("remova o share quando o perfil não tiver mais usuários");
+        } else if (candidate.ruleType === "AZURE_FILES_ALTERNATIVE_SERVICE_CHEAPER") {
+          reductionActions.push("avalie migrar os dados para Blob ou Managed Disk conforme o padrão de acesso");
+          complementaryActions.push("exclua o File Share somente após validar a migração");
+        } else if (
+          candidate.ruleType === "AZURE_FILES_PREMIUM_OVERSIZED" ||
+          candidate.ruleType === "AZURE_FILES_QUOTA_OVERSIZED"
+        ) {
+          reductionActions.push("reduza a quota ou o tier do File Share conforme o uso observado");
+          complementaryActions.push("exclua o File Share quando ele não for mais necessário");
+        } else if (candidate.ruleType === "AZURE_FILES_PROTECTION_EXCESSIVE") {
+          reductionActions.push("reduza a retenção de backup, snapshot ou Soft Delete conforme a política");
+          complementaryActions.push("exclua a proteção excedente quando não houver requisito de retenção");
         } else if (!isCompute && !isStorage) {
           reductionActions.push("reduza o consumo do recurso quando a carga permitir");
           complementaryActions.push("exclua ou isole o recurso quando ele não for mais necessário");

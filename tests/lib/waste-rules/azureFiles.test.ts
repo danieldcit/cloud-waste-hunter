@@ -3,6 +3,11 @@ import {
   findAzureFilesPremiumOversized,
   findAzureFilesQuotaOversized,
   findAzureFilesProtectionExcessive,
+  findAzureFilesAlternativeService,
+  findAzureFilesCoolTierUnused,
+  findAzureFilesDuplicated,
+  findAzureFilesFslogixOversized,
+  findAzureFilesOldHotTier,
   findAzureFilesUnusedShares,
 } from "@/lib/waste-rules/azureFiles";
 import type { ResourceGraphRow } from "@/lib/azure/resourceGraph";
@@ -55,5 +60,28 @@ describe("Azure Files waste rules", () => {
         share({ shareDeleteRetentionPolicy: { enabled: true, days: 90 } }),
       ]),
     ).toMatchObject([{ ruleType: "AZURE_FILES_PROTECTION_EXCESSIVE" }]);
+  });
+
+  it("detects old Hot-tier data and an unused Cool-tier opportunity", () => {
+    const old = share({
+      accessTier: "Hot",
+      lastModifiedTime: "2025-01-01T00:00:00Z",
+      lastAccessTime: "2025-01-01T00:00:00Z",
+      shareUsageBytes: 10 * 1024 ** 3,
+    });
+    expect(findAzureFilesOldHotTier([old])).toMatchObject([{ ruleType: "AZURE_FILES_OLD_HOT_TIER" }]);
+    expect(findAzureFilesCoolTierUnused([old])).toMatchObject([{ ruleType: "AZURE_FILES_COOL_TIER_UNUSED" }]);
+  });
+
+  it("requires explicit evidence before flagging duplicates, FSLogix, or alternatives", () => {
+    const resource = share({
+      duplicateOfResourceId: "/subscriptions/sub/duplicate",
+      isFslogix: true,
+      alternativeService: "Blob",
+      shareUsageBytes: 1 * 1024 ** 3,
+    });
+    expect(findAzureFilesDuplicated([resource])).toHaveLength(1);
+    expect(findAzureFilesFslogixOversized([resource])).toHaveLength(1);
+    expect(findAzureFilesAlternativeService([resource])).toHaveLength(1);
   });
 });
