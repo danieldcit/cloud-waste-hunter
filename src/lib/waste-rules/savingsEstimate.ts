@@ -68,6 +68,10 @@ const SAVINGS_METHOD_BY_RULE: Record<WasteRuleType, SavingsMethod> = {
   SNAPSHOT_EXCESSIVE_COUNT: "full_cost",
   IMAGE_ORPHANED: "unknown",
   GALLERY_IMAGE_VERSION_OLD: "unknown",
+  AZURE_FILES_SHARE_UNUSED: "full_cost",
+  AZURE_FILES_PREMIUM_OVERSIZED: "unknown",
+  AZURE_FILES_QUOTA_OVERSIZED: "unknown",
+  AZURE_FILES_PROTECTION_EXCESSIVE: "unknown",
 };
 
 /**

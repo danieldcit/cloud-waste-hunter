@@ -39,6 +39,10 @@ const CATEGORY_BY_RULE: Record<WasteRuleType, DashboardCategory> = {
   SNAPSHOT_EXCESSIVE_COUNT: "storage",
   IMAGE_ORPHANED: "storage",
   GALLERY_IMAGE_VERSION_OLD: "storage",
+  AZURE_FILES_SHARE_UNUSED: "storage",
+  AZURE_FILES_PREMIUM_OVERSIZED: "storage",
+  AZURE_FILES_QUOTA_OVERSIZED: "storage",
+  AZURE_FILES_PROTECTION_EXCESSIVE: "storage",
 };
 
 export function categoryForRule(ruleType: WasteRuleType): DashboardCategory {

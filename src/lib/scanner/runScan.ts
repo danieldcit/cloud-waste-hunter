@@ -44,6 +44,12 @@ import { findSnapshotOrphanedSource } from "@/lib/waste-rules/snapshotOrphanedSo
 import { findSnapshotExcessiveCount } from "@/lib/waste-rules/snapshotExcessiveCount";
 import { findImageOrphaned } from "@/lib/waste-rules/imageOrphaned";
 import { findGalleryImageVersionOld } from "@/lib/waste-rules/galleryImageVersionOld";
+import {
+  findAzureFilesPremiumOversized,
+  findAzureFilesQuotaOversized,
+  findAzureFilesProtectionExcessive,
+  findAzureFilesUnusedShares,
+} from "@/lib/waste-rules/azureFiles";
 import { isSessionHost, underlyingVm } from "@/lib/waste-rules/avdSessionHosts";
 import {
   buildCombinedSuggestionSummary,
@@ -71,6 +77,8 @@ export const COMBINED_QUERY_TYPES = [
   "microsoft.desktopvirtualization/scalingplans",
   "microsoft.compute/images",
   "microsoft.compute/galleries/images/versions",
+  "microsoft.storage/storageaccounts",
+  "microsoft.storage/storageaccounts/fileservices/shares",
 ];
 
 const COMBINED_QUERY = `
@@ -305,6 +313,10 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       ...findSnapshotExcessiveCount(resources),
       ...findImageOrphaned(resources),
       ...findGalleryImageVersionOld(resources),
+      ...findAzureFilesUnusedShares(resources),
+      ...findAzureFilesPremiumOversized(resources),
+      ...findAzureFilesQuotaOversized(resources),
+      ...findAzureFilesProtectionExcessive(resources),
     ];
 
     const resourceById = new Map<string, ResourceGraphRow>(
