@@ -151,18 +151,15 @@ export function buildCatalogRecommendation(input: CatalogRecommendationInput): s
       : "Economia potencial: não calculada; é necessário obter o preço da alternativa.";
 
   return [
-    `⚠️ ${context.title}`,
-    `Recurso: ${input.candidate.resourceId}`,
+    context.title,
     `Problema: ${context.problem}`,
     metric,
     period,
-    `Custo atual: ${money(input.currentCost)}/mês.`,
     `Recomendação: ${input.existingActions ?? "avaliar resize, tier, shutdown, autoscaling, limpeza, compromisso ou otimização conforme o gatilho."}`,
     alternative,
     economics,
-    `Risco: ${context.risk}. Confiança: ${context.confidence}.`,
-    `Ação necessária: ${context.action}`,
-    `Automatização: ${context.automation}`,
-    `Aprovação: ${context.approval}`,
+    `Risco ${context.risk} | Confiança ${context.confidence}`,
+    `Ação: ${context.action}`,
+    `${context.automation} ${context.approval}`,
   ].join("\n");
 }
