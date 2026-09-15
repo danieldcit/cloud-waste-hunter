@@ -20,6 +20,28 @@ function percentage(currentCost: number, savings: number | null): string {
 }
 
 function ruleContext(ruleType: string): { title: string; problem: string; action: string; risk: string; confidence: string; automation: string; approval: string } {
+  if (ruleType === "IDLE_VM" || ruleType === "VM_STOPPED_RETAINING_RESOURCES") {
+    return {
+      title: "VM SUBUTILIZADA / LIGADA SEM NECESSIDADE",
+      problem: "A VM permaneceu provisionada apesar da baixa utilização observada.",
+      action: "Validar CPU, memória, IOPS, throughput e picos; depois aplicar shutdown agendado ou resize.",
+      risk: "Médio",
+      confidence: "Alta",
+      automation: "Schedule de desligamento e inicialização pode ser automatizado.",
+      approval: "Necessita aprovação antes do shutdown ou resize.",
+    };
+  }
+  if (ruleType === "ORPHANED_DISK" || ruleType === "UNASSOCIATED_PUBLIC_IP" || ruleType === "SNAPSHOT_ORPHANED_SOURCE") {
+    return {
+      title: "RECURSO ÓRFÃO",
+      problem: "O recurso não está associado a uma carga ativa, mas continua gerando custo.",
+      action: "Confirmar que não há dados, dependências ou requisito de recuperação antes da remoção.",
+      risk: "Alto",
+      confidence: "Alta",
+      automation: "A detecção pode ser automatizada; a exclusão deve ser aprovada.",
+      approval: "Necessita aprovação explícita antes da exclusão.",
+    };
+  }
   if (ruleType.includes("VM") || ruleType.includes("AVD")) {
     return {
       title: "VM SUBUTILIZADA",
@@ -120,6 +142,8 @@ export function buildCatalogRecommendation(input: CatalogRecommendationInput): s
   const alternative =
     input.alternativeName && input.monthlySavings != null && input.currentCost > 0
       ? `Alternativa: ${input.alternativeName}; custo estimado ${money(input.currentCost - input.monthlySavings)}/mês; economia ${money(input.monthlySavings)}/mês (${percentage(input.currentCost, input.monthlySavings)}).`
+      : input.monthlySavings != null && input.currentCost > 0 && input.monthlySavings >= input.currentCost
+        ? "Alternativa: desligamento, limpeza ou remoção após validação; o custo evitável corresponde ao custo atual."
       : "Alternativa/preço: não há dados suficientes para calcular um custo comparável.";
   const economics =
     input.monthlySavings != null
