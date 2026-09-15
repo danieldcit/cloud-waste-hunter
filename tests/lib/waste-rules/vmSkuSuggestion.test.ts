@@ -52,14 +52,21 @@ describe("suggestVmSku", () => {
   // caller to pass currentVCpus/currentMemoryGB pre-parsed from the vmSize string.
   const currentSku: VmSkuCandidate = { name: "Standard_D4s_v3", vCPUs: 4, memoryGB: 16, restricted: false };
 
-  it("returns null when peak CPU is unavailable", async () => {
+  it("falls back to average CPU when peak CPU is unavailable", async () => {
+    const skus: VmSkuCandidate[] = [
+      currentSku,
+      { name: "Standard_B2ms", vCPUs: 2, memoryGB: 16, restricted: false },
+    ];
     const result = await suggestVmSku(
       resource, "sub-1", "Standard_D4s_v3", false,
       vi.fn().mockResolvedValue(null),
-      vi.fn(),
-      vi.fn(),
+      vi.fn().mockResolvedValue(5),
+      vi.fn().mockResolvedValue(skus),
+      vi.fn()
+        .mockResolvedValueOnce(100)
+        .mockResolvedValueOnce(60),
     );
-    expect(result).toBeNull();
+    expect(result).toEqual({ skuName: "Standard_B2ms", monthlySavings: 40 });
   });
 
   it("returns null when the current VM's size isn't found in the region's SKU list", async () => {

@@ -74,6 +74,7 @@ export function RecommendationsClient({
               <th className="p-2">{t("table.subscription")}</th>
               <th className="p-2">{t("table.currentCost")}</th>
               <th className="p-2">{t("table.estimatedSavings")}</th>
+              <th className="p-2">{t("table.suggestion")}</th>
               <th className="p-2" />
             </tr>
           </thead>
@@ -97,6 +98,9 @@ export function RecommendationsClient({
                   {finding.estimatedMonthlySavings == null
                     ? "—"
                     : `$${finding.estimatedMonthlySavings.toFixed(2)}`}
+                </td>
+                <td className="max-w-md p-2 text-xs text-gray-700 dark:text-gray-300">
+                  {finding.suggestedActionSummary ?? "—"}
                 </td>
                 <td className="p-2">
                   <button

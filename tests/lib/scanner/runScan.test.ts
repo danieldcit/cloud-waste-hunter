@@ -869,11 +869,11 @@ describe("runScan", () => {
       where: { subscriptionId: subscription.id, resourceId: "vm-tt-1", ruleType: "IDLE_VM" },
     });
     expect(finding.suggestedActionSummary).toBe(
-      "Redimensione para Standard_B2ms em vez de desligar — economia estimada de $42.00/mês",
+      "reduza o consumo para Standard_B2ms (economia estimada de $42.00/mês) e desligue a VM/VMSS quando não houver carga.",
     );
   });
 
-  it("leaves suggestedActionSummary null when suggestVmSku returns null", async () => {
+  it("keeps a single-sentence fallback suggestion when suggestVmSku returns null", async () => {
     const customer = await prisma.customer.create({ data: { entraTenantId: "tenant-tt-2", name: "Tooltips2" } });
     const subscription = await prisma.subscription.create({
       data: { customerId: customer.id, azureSubscriptionId: "sub-tt-2", displayName: "Tooltips2" },
@@ -896,7 +896,9 @@ describe("runScan", () => {
     const finding = await prisma.wasteFinding.findFirstOrThrow({
       where: { subscriptionId: subscription.id, resourceId: "vm-tt-2", ruleType: "IDLE_VM" },
     });
-    expect(finding.suggestedActionSummary).toBeNull();
+    expect(finding.suggestedActionSummary).toBe(
+      "reduza o consumo do recurso quando a carga permitir e desligue a VM/VMSS quando não houver carga.",
+    );
   });
 
   it("persists tooltipExplanation for any rule when explainFinding returns text", async () => {
@@ -950,7 +952,7 @@ describe("runScan", () => {
       where: { subscriptionId: subscription.id, resourceId: "vmss-tt-4", ruleType: "VMSS_IDLE_LOW_UTILIZATION" },
     });
     expect(finding.suggestedActionSummary).toBe(
-      "Redimensione para Standard_B2ms em vez de desligar — economia estimada de $42.00/mês",
+      "reduza o consumo para Standard_B2ms (economia estimada de $42.00/mês) e desligue a VM/VMSS quando não houver carga.",
     );
   });
 
@@ -983,7 +985,7 @@ describe("runScan", () => {
       where: { subscriptionId: subscription.id, resourceId: "disk-tt-5", ruleType: "DISK_TIER_OVERSIZED" },
     });
     expect(finding.suggestedActionSummary).toBe(
-      "Redimensione para 128 GiB — economia adicional estimada de $30.00/mês",
+      "reduza o disco para 128 GiB (economia estimada de $30.00/mês) e exclua o disco quando ele não for mais necessário.",
     );
   });
 
@@ -1015,13 +1017,13 @@ describe("runScan", () => {
       where: { subscriptionId: subscription.id, resourceId: "disk-tt-6", ruleType: "DISK_PREMIUM_TIER_UNNECESSARY" },
     });
     expect(finding.suggestedActionSummary).toBe(
-      "Troque para um disco Standard SSD equivalente — economia estimada de $15.00/mês",
+      "troque para um disco Standard SSD equivalente (economia estimada de $15.00/mês) e exclua o disco quando ele não for mais necessário.",
     );
     expect(suggestVmSku).not.toHaveBeenCalled();
     expect(suggestDiskTier).not.toHaveBeenCalled();
   });
 
-  it("leaves suggestedActionSummary null for a DISK_PREMIUM_V2_OVERSIZED finding (rule deliberately absent from the suggestion chain)", async () => {
+  it("keeps a combined fallback sentence for a DISK_PREMIUM_V2_OVERSIZED finding even without a resize suggestion", async () => {
     const customer = await prisma.customer.create({ data: { entraTenantId: "tenant-tt-7", name: "Tooltips7" } });
     const subscription = await prisma.subscription.create({
       data: { customerId: customer.id, azureSubscriptionId: "sub-tt-7", displayName: "Tooltips7" },
@@ -1046,7 +1048,9 @@ describe("runScan", () => {
     const finding = await prisma.wasteFinding.findFirstOrThrow({
       where: { subscriptionId: subscription.id, resourceId: "disk-tt-7", ruleType: "DISK_PREMIUM_V2_OVERSIZED" },
     });
-    expect(finding.suggestedActionSummary).toBeNull();
+    expect(finding.suggestedActionSummary).toBe(
+      "reduza o consumo do recurso quando a carga permitir e exclua o recurso quando ele não for mais necessário.",
+    );
   });
 
   it("persists a VMSS_NO_AUTOSCALE finding for a VMSS with no autoscale settings", async () => {

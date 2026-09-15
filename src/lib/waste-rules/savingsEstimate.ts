@@ -117,3 +117,26 @@ export async function estimateMonthlySavings(
     }
   }
 }
+
+export function buildCombinedSuggestionSummary({
+  reductionActions = [],
+  complementaryActions = [],
+}: {
+  reductionActions?: string[];
+  complementaryActions?: string[];
+}): string | null {
+  const actions = [...reductionActions, ...complementaryActions].filter(Boolean);
+  if (actions.length === 0) {
+    return null;
+  }
+
+  if (actions.length === 1) {
+    return actions[0];
+  }
+
+  if (actions.length === 2) {
+    return `${actions[0]} e ${actions[1]}.`;
+  }
+
+  return `${actions[0]}, ${actions[1]} ou ${actions[2]}.`;
+}

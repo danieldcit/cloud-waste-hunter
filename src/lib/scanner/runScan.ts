@@ -45,7 +45,10 @@ import { findSnapshotExcessiveCount } from "@/lib/waste-rules/snapshotExcessiveC
 import { findImageOrphaned } from "@/lib/waste-rules/imageOrphaned";
 import { findGalleryImageVersionOld } from "@/lib/waste-rules/galleryImageVersionOld";
 import { isSessionHost, underlyingVm } from "@/lib/waste-rules/avdSessionHosts";
-import { estimateMonthlySavings } from "@/lib/waste-rules/savingsEstimate";
+import {
+  buildCombinedSuggestionSummary,
+  estimateMonthlySavings,
+} from "@/lib/waste-rules/savingsEstimate";
 import { suggestVmSku } from "@/lib/waste-rules/vmSkuSuggestion";
 import { suggestDiskTier } from "@/lib/waste-rules/diskTierSuggestion";
 import { explainFinding, type FindingFacts } from "@/lib/ai/findingExplainer";
@@ -350,14 +353,23 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       }
 
       let suggestedActionSummary: string | null = null;
-      if (
-        (candidate.ruleType === "IDLE_VM" || candidate.ruleType === "VMSS_IDLE_LOW_UTILIZATION") &&
-        resource
-      ) {
-        try {
-          // A VM's size/OS live at properties.hardwareProfile/storageProfile; a VMSS's live one
-          // level deeper, under properties.virtualMachineProfile (same shape retailPrices.ts's
-          // vmssVmSize/isWindowsVmss already read from). Branch on which rule fired.
+      try {
+        const resourceTypeLower = resource?.type?.toLowerCase() ?? "";
+        const isCompute =
+          resourceTypeLower.includes("virtualmachine") ||
+          resourceTypeLower.includes("virtualmachinescaleset");
+        const isStorage =
+          resourceTypeLower.includes("disk") ||
+          resourceTypeLower.includes("snapshot") ||
+          resourceTypeLower.includes("image");
+
+        const reductionActions: string[] = [];
+        const complementaryActions: string[] = [];
+
+        if (
+          (candidate.ruleType === "IDLE_VM" || candidate.ruleType === "VMSS_IDLE_LOW_UTILIZATION") &&
+          resource
+        ) {
           const isVmss = candidate.ruleType === "VMSS_IDLE_LOW_UTILIZATION";
           const vmssProfile = resource.properties.virtualMachineProfile as
             | { hardwareProfile?: { vmSize?: string }; storageProfile?: { osDisk?: { osType?: string } } }
@@ -377,23 +389,57 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
               storageProfile?.osDisk?.osType === "Windows",
             );
             if (suggestion) {
-              suggestedActionSummary = `Redimensione para ${suggestion.skuName} em vez de desligar — economia estimada de $${suggestion.monthlySavings.toFixed(2)}/mês`;
+              reductionActions.push(
+                `redimensione a VM/VMSS para ${suggestion.skuName} (SKU menor, economia estimada de $${suggestion.monthlySavings.toFixed(2)}/mês)`,
+              );
+            } else {
+              reductionActions.push("reduza o consumo do recurso quando a carga permitir");
             }
+          } else {
+            reductionActions.push("reduza o consumo do recurso quando a carga permitir");
           }
-        } catch (error) {
-          console.error(`VM SKU suggestion failed for ${candidate.resourceId}`, error);
-        }
-      } else if (candidate.ruleType === "DISK_TIER_OVERSIZED" && resource) {
-        try {
+          complementaryActions.push("desligue a VM/VMSS quando não houver carga");
+        } else if (candidate.ruleType === "DISK_TIER_OVERSIZED" && resource) {
           const suggestion = await suggestDiskTier(resource);
           if (suggestion) {
-            suggestedActionSummary = `Redimensione para ${suggestion.suggestedSizeGb} GiB — economia adicional estimada de $${suggestion.monthlySavings.toFixed(2)}/mês`;
+            reductionActions.push(
+              `reduza o disco para ${suggestion.suggestedSizeGb} GiB (economia estimada de $${suggestion.monthlySavings.toFixed(2)}/mês)`,
+            );
+          } else {
+            reductionActions.push("reduza o consumo do disco quando a carga permitir");
           }
-        } catch (error) {
-          console.error(`Disk tier suggestion failed for ${candidate.resourceId}`, error);
+          complementaryActions.push("exclua o disco quando ele não for mais necessário");
+        } else if (candidate.ruleType === "DISK_PREMIUM_TIER_UNNECESSARY") {
+          if (estimatedMonthlySavings != null) {
+            reductionActions.push(
+              `troque para um disco Standard SSD equivalente (economia estimada de $${estimatedMonthlySavings.toFixed(2)}/mês)`,
+            );
+          } else {
+            reductionActions.push("reduza o consumo do disco quando a carga permitir");
+          }
+          complementaryActions.push("exclua o disco quando ele não for mais necessário");
+        } else if (!isCompute && !isStorage) {
+          reductionActions.push("reduza o consumo do recurso quando a carga permitir");
+          complementaryActions.push("exclua ou isole o recurso quando ele não for mais necessário");
+        } else if (isCompute) {
+          reductionActions.push("reduza o consumo do recurso quando a carga permitir");
+          complementaryActions.push("desligue a VM/VMSS quando não houver carga");
+        } else {
+          reductionActions.push("reduza o consumo do recurso quando a carga permitir");
+          complementaryActions.push("exclua o recurso quando ele não for mais necessário");
         }
-      } else if (candidate.ruleType === "DISK_PREMIUM_TIER_UNNECESSARY" && estimatedMonthlySavings != null) {
-        suggestedActionSummary = `Troque para um disco Standard SSD equivalente — economia estimada de $${estimatedMonthlySavings.toFixed(2)}/mês`;
+
+        suggestedActionSummary = buildCombinedSuggestionSummary({
+          reductionActions,
+          complementaryActions,
+        });
+      } catch (error) {
+        console.error(`Action summary generation failed for ${candidate.resourceId}`, error);
+        suggestedActionSummary =
+          resource?.type?.toLowerCase().includes("virtualmachine") ||
+          resource?.type?.toLowerCase().includes("virtualmachinescaleset")
+            ? "reduza o consumo do recurso quando a carga permitir e desligue a VM/VMSS quando não houver carga."
+            : "reduza o consumo do recurso quando a carga permitir e exclua o recurso quando ele não for mais necessário.";
       }
 
       let tooltipExplanation: string | null = null;

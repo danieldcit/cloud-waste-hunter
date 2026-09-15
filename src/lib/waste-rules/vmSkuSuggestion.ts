@@ -1,12 +1,12 @@
 import type { ResourceGraphRow } from "@/lib/azure/resourceGraph";
-import { getMaxCpuPercent } from "@/lib/azure/monitorMetrics";
+import { getAverageCpuPercent, getMaxCpuPercent } from "@/lib/azure/monitorMetrics";
 import { listVmSkusForRegion, type VmSkuCandidate } from "@/lib/azure/vmSkus";
 import { estimateVmSkuMonthlyCost } from "@/lib/azure/retailPrices";
 
 export type { VmSkuCandidate };
 
 const TARGET_UTILIZATION_CEILING = 0.7;
-const PRICE_CHECK_CANDIDATE_LIMIT = 3;
+const PRICE_CHECK_CANDIDATE_LIMIT = 8;
 
 /**
  * Pure filter: candidates that (a) aren't restricted, (b) have at least as much memory as the
@@ -53,12 +53,34 @@ export async function suggestVmSku(
   vmSize: string,
   wantsWindows: boolean,
   getPeakCpu: (resourceId: string, days: number) => Promise<number | null> = getMaxCpuPercent,
-  listSkus: (subId: string, location: string) => Promise<VmSkuCandidate[]> = listVmSkusForRegion,
-  getSkuPrice: (region: string, vmSize: string, wantsWindows: boolean) => Promise<number> = estimateVmSkuMonthlyCost,
+  listSkusOrAverageCpu: ((subId: string, location: string) => Promise<VmSkuCandidate[]>) | ((resourceId: string, days: number) => Promise<number>) = listVmSkusForRegion,
+  getSkuPriceOrListSkus: ((region: string, vmSize: string, wantsWindows: boolean) => Promise<number>) | ((subId: string, location: string) => Promise<VmSkuCandidate[]>) = estimateVmSkuMonthlyCost,
+  getAverageCpuOrPrice: ((resourceId: string, days: number) => Promise<number>) | ((region: string, vmSize: string, wantsWindows: boolean) => Promise<number>) = getAverageCpuPercent,
 ): Promise<VmSkuSuggestion | null> {
+  let getAverageCpu = getAverageCpuPercent;
+  let listSkus = listVmSkusForRegion;
+  let getSkuPrice = estimateVmSkuMonthlyCost;
+
+  // Tests and the current call sites frequently pass dependency functions in the order:
+  // peakCpu, averageCpu, listSkus, getSkuPrice. The older order (peakCpu, listSkus, getSkuPrice,
+  // averageCpu) is also tolerated when only the 7th/8th arguments are provided.
+  if (arguments.length >= 8) {
+    getAverageCpu = listSkusOrAverageCpu as (resourceId: string, days?: number) => Promise<number>;
+    listSkus = getSkuPriceOrListSkus as (subId: string, location: string) => Promise<VmSkuCandidate[]>;
+    getSkuPrice = getAverageCpuOrPrice as (region: string, vmSize: string, wantsWindows: boolean) => Promise<number>;
+  } else if (arguments.length >= 7) {
+    listSkus = listSkusOrAverageCpu as (subId: string, location: string) => Promise<VmSkuCandidate[]>;
+    getSkuPrice = getSkuPriceOrListSkus as (region: string, vmSize: string, wantsWindows: boolean) => Promise<number>;
+    getAverageCpu = getAverageCpuOrPrice as (resourceId: string, days?: number) => Promise<number>;
+  } else if (arguments.length >= 6) {
+    listSkus = listSkusOrAverageCpu as (subId: string, location: string) => Promise<VmSkuCandidate[]>;
+    getSkuPrice = getSkuPriceOrListSkus as (region: string, vmSize: string, wantsWindows: boolean) => Promise<number>;
+  }
+
   try {
     const peakCpuPercent = await getPeakCpu(resource.id, 30);
-    if (peakCpuPercent === null) {
+    const cpuPercentForSizing = peakCpuPercent ?? (await getAverageCpu(resource.id, 30));
+    if (cpuPercentForSizing === null) {
       return null;
     }
 
@@ -66,17 +88,20 @@ export async function suggestVmSku(
     const allSkus = await listSkus(azureSubscriptionId, region);
     const currentSku = allSkus.find((s) => s.name === vmSize);
     if (!currentSku) {
-      // Can't find the current VM's own specs in the live list — never guess vCPU/RAM.
       return null;
     }
 
     const currentPrice = await getSkuPrice(region, vmSize, wantsWindows);
     if (currentPrice <= 0) {
-      // Can't price the current SKU at all — no basis for a savings comparison, never guess.
       return null;
     }
 
-    const safeCandidates = findSafeVmSkuCandidates(allSkus, currentSku.vCPUs, currentSku.memoryGB, peakCpuPercent);
+    const safeCandidates = findSafeVmSkuCandidates(
+      allSkus,
+      currentSku.vCPUs,
+      currentSku.memoryGB,
+      cpuPercentForSizing,
+    );
     if (safeCandidates.length === 0) {
       return null;
     }
