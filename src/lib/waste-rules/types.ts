@@ -6,8 +6,10 @@ export interface WasteFindingCandidate {
   resourceId: string;
   subscriptionId: string;
   savingsCategory?: SavingsCategory;
+  metricName?: string;
   metricObserved?: number;
   periodAnalyzedDays?: number;
+  metricSummary?: string;
 }
 
 export type WasteRule = (resources: ResourceGraphRow[]) => WasteFindingCandidate[];

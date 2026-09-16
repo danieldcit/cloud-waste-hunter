@@ -7,6 +7,9 @@ interface CatalogRecommendationInput {
   currentCost: number;
   monthlySavings: number | null;
   alternativeName?: string;
+  alternativeMonthlyCost?: number;
+  alternativeMonthlySavings?: number;
+  metricSummary?: string;
   existingActions: string | null;
 }
 
@@ -17,6 +20,48 @@ function money(value: number): string {
 function percentage(currentCost: number, savings: number | null): string {
   if (savings == null || currentCost <= 0) return "não calculado";
   return `${((savings / currentCost) * 100).toFixed(1)}%`;
+}
+
+function metricName(ruleType: string, explicitName?: string): string | null {
+  if (explicitName) return explicitName;
+  if (ruleType === "IDLE_VM" || ruleType === "VMSS_IDLE_LOW_UTILIZATION") {
+    return "Percentage CPU (média diária)";
+  }
+  if (ruleType.includes("DISK")) return "IOPS médios";
+  if (ruleType.includes("CPU") || ruleType.includes("UTILIZATION")) {
+    return "utilização observada";
+  }
+  if (ruleType.includes("IDLE")) return "uso observado";
+  if (ruleType.includes("EGRESS")) return "transferência de dados";
+  if (ruleType.includes("ANOMALY")) return "variação de custo";
+  if (ruleType.includes("FORECAST")) return "custo projetado";
+  return null;
+}
+
+function metricEvidence(
+  ruleType: string,
+  name: string | null,
+  value: number | undefined,
+  periodDays: number | undefined,
+  summary?: string,
+): string {
+  if (summary) {
+    return `Métricas observadas: ${summary}${periodDays != null ? ` Período: ${periodDays} dias.` : ""}`;
+  }
+  if (name && value != null) {
+    const unit = name.toLowerCase().includes("cpu") || name.toLowerCase().includes("utilização")
+      ? "%"
+      : "";
+    const period = periodDays != null ? ` durante ${periodDays} dias` : "";
+    if (name.toLowerCase().includes("cpu")) {
+      return `Métrica: ${name} = ${value.toFixed(2)}${unit}${period}. Isso significa que a média diária de CPU ficou em ${value.toFixed(2)}%, abaixo do limite que acionou a regra; é um sinal de baixa utilização, não uma conclusão isolada de que a VM pode ser reduzida.`;
+    }
+    return `Métrica: ${name} = ${value.toFixed(2)}${unit}${period}. Esse valor é a evidência quantitativa que acionou a regra.`;
+  }
+  if (ruleType.includes("VM") || ruleType.includes("AVD")) {
+    return "Métrica: não há métrica de utilização registrada para este achado; a recomendação deve ser tratada como sinal de revisão, não como autorização de resize.";
+  }
+  return "Métrica: o gatilho foi identificado por configuração/estado do recurso, sem percentual de utilização aplicável.";
 }
 
 function ruleContext(ruleType: string): { title: string; problem: string; action: string; risk: string; confidence: string; automation: string; approval: string } {
@@ -132,16 +177,22 @@ function ruleContext(ruleType: string): { title: string; problem: string; action
 
 export function buildCatalogRecommendation(input: CatalogRecommendationInput): string {
   const context = ruleContext(input.candidate.ruleType);
-  const metric =
-    input.candidate.metricObserved != null
-      ? `Métrica observada: ${input.candidate.metricObserved}%`
-      : "Métrica específica não disponível para este gatilho.";
+  const namedMetric = metricName(input.candidate.ruleType, input.candidate.metricName);
+  const metric = metricEvidence(
+    input.candidate.ruleType,
+    namedMetric,
+    input.candidate.metricObserved,
+    input.candidate.periodAnalyzedDays,
+    input.candidate.metricSummary,
+  );
   const period = input.candidate.periodAnalyzedDays
     ? `Período analisado: ${input.candidate.periodAnalyzedDays} dias.`
-    : "Período analisado: conforme evidência disponível no catálogo.";
+    : "Período analisado: não disponível para este gatilho.";
   const alternative =
-    input.alternativeName && input.monthlySavings != null && input.currentCost > 0
-      ? `Alternativa: ${input.alternativeName}; custo estimado ${money(input.currentCost - input.monthlySavings)}/mês; economia ${money(input.monthlySavings)}/mês (${percentage(input.currentCost, input.monthlySavings)}).`
+    input.alternativeName && input.alternativeMonthlyCost != null && input.alternativeMonthlySavings != null
+      ? `Alternativa Azure: ${input.alternativeName}; preço de varejo estimado ${money(input.alternativeMonthlyCost)}/mês; economia calculada pelo catálogo Azure ${money(input.alternativeMonthlySavings)}/mês.`
+      : input.alternativeName && input.monthlySavings != null && input.currentCost > 0
+      ? `Alternativa Azure: ${input.alternativeName}; economia estimada ${money(input.monthlySavings)}/mês (${percentage(input.currentCost, input.monthlySavings)}), com preço da alternativa não disponível.`
       : input.monthlySavings != null && input.currentCost > 0 && input.monthlySavings >= input.currentCost
         ? "Alternativa: desligamento, limpeza ou remoção após validação; o custo evitável corresponde ao custo atual."
       : "Alternativa/preço: não há dados suficientes para calcular um custo comparável.";
@@ -155,11 +206,15 @@ export function buildCatalogRecommendation(input: CatalogRecommendationInput): s
     `Problema: ${context.problem}`,
     metric,
     period,
-    `Recomendação: ${input.existingActions ?? "avaliar resize, tier, shutdown, autoscaling, limpeza, compromisso ou otimização conforme o gatilho."}`,
+    `Validação FinOps: ${input.candidate.ruleType.includes("VM") || input.candidate.ruleType.includes("AVD") ? "cruzar CPU média e máxima com memória disponível, IOPS de leitura/escrita, throughput de rede e picos do mesmo período antes de concluir por shutdown ou resize." : "validar a métrica que acionou a regra contra o custo, uso real, dependências e picos do período antes de aplicar a mudança."}`,
+    ...(input.candidate.ruleType.includes("VM") || input.candidate.ruleType.includes("AVD")
+      ? []
+      : [`Recomendação: ${input.existingActions ?? "avaliar tier, shutdown, autoscaling, limpeza, compromisso ou otimização conforme o gatilho."}`]),
     alternative,
     economics,
     `Risco ${context.risk} | Confiança ${context.confidence}`,
-    `Ação: ${context.action}`,
-    `${context.automation} ${context.approval}`,
+    ...(input.candidate.ruleType.includes("VM") || input.candidate.ruleType.includes("AVD")
+      ? []
+      : [`Ação: ${context.action}`, `${context.automation.replace(/Resize pode ser automatizado somente após aprovação\.\s*/i, "")}${context.approval}`]),
   ].join("\n");
 }

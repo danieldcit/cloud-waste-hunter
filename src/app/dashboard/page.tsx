@@ -11,7 +11,11 @@ export default async function DashboardPage() {
   const managedClients = await getManagedClients(operatorCustomerId);
 
   const findings = await prisma.wasteFinding.findMany({
-    where: { subscription: { customerId }, status: "OPEN" },
+    where: {
+      subscription: { customerId },
+      status: "OPEN",
+      estimatedMonthlyCost: { gt: 0 },
+    },
     orderBy: { detectedAt: "desc" },
     include: { subscription: true },
   });
@@ -31,6 +35,7 @@ export default async function DashboardPage() {
   const activeResourceCount = await prisma.resource.count({
     where: { subscription: { customerId } },
   });
+  const wasteResourceCount = new Set(findings.map((finding) => finding.resourceId)).size;
 
   return (
     <DashboardClient
@@ -41,6 +46,7 @@ export default async function DashboardPage() {
       managedClients={managedClients}
       summary={summary}
       activeResourceCount={activeResourceCount}
+      wasteResourceCount={wasteResourceCount}
       findings={findings.map((f) => ({
         id: f.id,
         ruleType: f.ruleType,

@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 export interface FindingFacts {
   ruleLabel: string;
   resourceId: string;
+  metricName?: string | null;
   metricObserved: number | null;
   periodAnalyzedDays: number | null;
   savingsCategory: "HARD_SAVING" | "POTENTIAL_SAVING" | null;
@@ -21,8 +22,11 @@ apenas contextualize por que aquilo foi sugerido. Sem saudação, sem preâmbulo
 /** Pure — testable without network. Builds the fact string handed to the model. */
 export function buildFactsPrompt(facts: FindingFacts): string {
   const lines = [`Regra: ${facts.ruleLabel}`, `Recurso: ${facts.resourceId}`];
-  if (facts.metricObserved != null && facts.periodAnalyzedDays != null) {
-    lines.push(`Métrica observada: ${facts.metricObserved} nos últimos ${facts.periodAnalyzedDays} dias`);
+  if (facts.metricObserved != null) {
+    const period = facts.periodAnalyzedDays != null
+      ? ` nos últimos ${facts.periodAnalyzedDays} dias`
+      : "";
+    lines.push(`Métrica observada: ${facts.metricName ?? "não nomeada"} = ${facts.metricObserved}${period}`);
   }
   if (facts.savingsCategory) {
     lines.push(`Classificação: ${facts.savingsCategory}`);

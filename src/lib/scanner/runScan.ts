@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { queryResourceGraph, type ResourceGraphRow } from "@/lib/azure/resourceGraph";
 import { estimateMonthlyCost } from "@/lib/azure/costManagement";
 import { estimateRetailMonthlyCost } from "@/lib/azure/retailPrices";
+import { estimateVmSkuMonthlyCost } from "@/lib/azure/retailPrices";
 import {
   getSubscriptionMonthToDateSpend,
   getSubscriptionForecast,
@@ -586,6 +587,12 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           );
         }
       }
+      if (estimatedMonthlyCost <= 0) {
+        console.warn(
+          `Skipping finding ${candidate.resourceId} (${candidate.ruleType}): no positive monthly cost was confirmed`,
+        );
+        continue;
+      }
       let estimatedMonthlySavings: number | null = null;
       try {
         estimatedMonthlySavings = await estimateMonthlySavings(
@@ -602,6 +609,8 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
 
       let suggestedActionSummary: string | null = null;
       let alternativeName: string | undefined;
+      let alternativeMonthlyCost: number | undefined;
+      let alternativeMonthlySavings: number | undefined;
       try {
         const resourceTypeLower = resource?.type?.toLowerCase() ?? "";
         const isCompute =
@@ -631,6 +640,10 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
             ? vmssProfile?.storageProfile
             : (resource.properties.storageProfile as { osDisk?: { osType?: string } } | undefined);
           const vmSize = hardwareProfile?.vmSize;
+          if (candidate.metricObserved != null) {
+            candidate.metricSummary =
+              `CPU: ${candidate.metricObserved.toFixed(2)}%; memória: não disponível no Azure Monitor para esta assinatura; IOPS: não disponível para a VM; throughput: não disponível para a VM`;
+          }
           if (vmSize) {
             const suggestion = await suggestVmSku(
               resource,
@@ -640,6 +653,23 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
             );
             if (suggestion) {
               alternativeName = suggestion.skuName;
+              try {
+                alternativeMonthlyCost = await estimateVmSkuMonthlyCost(
+                  resource.location ?? "eastus",
+                  suggestion.skuName,
+                  storageProfile?.osDisk?.osType === "Windows",
+                );
+                const currentRetailCost = await estimateVmSkuMonthlyCost(
+                  resource.location ?? "eastus",
+                  vmSize,
+                  storageProfile?.osDisk?.osType === "Windows",
+                );
+                if (currentRetailCost > alternativeMonthlyCost) {
+                  alternativeMonthlySavings = currentRetailCost - alternativeMonthlyCost;
+                }
+              } catch (error) {
+                console.error(`Azure VM alternative pricing failed for ${candidate.resourceId}`, error);
+              }
               reductionActions.push(
                 `reduza o consumo para ${suggestion.skuName} (economia estimada de $${suggestion.monthlySavings.toFixed(2)}/mês)`,
               );
@@ -742,6 +772,8 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           currentCost: estimatedMonthlyCost,
           monthlySavings: estimatedMonthlySavings,
           alternativeName,
+          alternativeMonthlyCost,
+          alternativeMonthlySavings,
           existingActions: suggestedActionSummary,
         });
       } catch (error) {
@@ -758,6 +790,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         const facts: FindingFacts = {
           ruleLabel: translate("pt-BR", `rule.${candidate.ruleType}`),
           resourceId: candidate.resourceId,
+          metricName: candidate.metricName ?? null,
           metricObserved: candidate.metricObserved ?? null,
           periodAnalyzedDays: candidate.periodAnalyzedDays ?? null,
           savingsCategory: candidate.savingsCategory ?? null,

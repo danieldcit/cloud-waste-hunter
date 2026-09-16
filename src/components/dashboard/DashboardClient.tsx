@@ -40,6 +40,7 @@ export function DashboardClient({
   managedClients,
   summary,
   activeResourceCount,
+  wasteResourceCount,
   findings,
   subscriptions,
 }: {
@@ -49,6 +50,7 @@ export function DashboardClient({
   managedClients: { id: string; name: string }[];
   summary: { openFindingsCount: number; totalEstimatedMonthlySavings: number };
   activeResourceCount: number;
+  wasteResourceCount: number;
   findings: FindingRow[];
   subscriptions: SubscriptionOption[];
 }) {
@@ -122,9 +124,10 @@ export function DashboardClient({
           </div>
         )}
 
-        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-5">
           <StatCard label={t("cards.potentialSavings")} value={`$${summary.totalEstimatedMonthlySavings.toFixed(2)}`} />
           <StatCard label={t("cards.activeResources")} value={String(activeResourceCount)} />
+          <StatCard label={t("cards.wasteResources")} value={String(wasteResourceCount)} />
           <StatCard
             label={t("cards.monthlySpending")}
             value={
@@ -240,7 +243,9 @@ export function DashboardClient({
                       {t(`impact.${impact}`)}
                     </span>
                   </td>
-                  <td className="p-2">${finding.estimatedMonthlyCost.toFixed(2)}</td>
+                  <td className="p-2">
+                    ${finding.estimatedMonthlyCost.toFixed(2)}
+                  </td>
                   <td className="p-2">
                     {finding.estimatedMonthlySavings == null
                       ? "—"
