@@ -8,6 +8,7 @@ import { AppHeader } from "@/components/AppHeader";
 
 interface RecommendationRow {
   id: string;
+  subscriptionId: string;
   ruleType: WasteRuleType;
   resourceId: string;
   subscriptionName: string;
@@ -22,29 +23,31 @@ export function RecommendationsClient({
   operatorCustomerId,
   activeClientId,
   managedClients,
+  subscriptions,
   findings,
 }: {
   userLabel: string;
   operatorCustomerId: string;
   activeClientId: string;
   managedClients: { id: string; name: string }[];
+  subscriptions: { id: string; displayName: string }[];
   findings: RecommendationRow[];
 }) {
   const { t } = useLocale();
   const [search, setSearch] = useState("");
   const [visibleFindings, setVisibleFindings] = useState(findings);
+  const [selectedSubscriptionId, setSelectedSubscriptionId] = useState("all");
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) {
-      return visibleFindings;
-    }
     return visibleFindings.filter(
       (f) =>
-        f.resourceId.toLowerCase().includes(term) ||
-        t(`rule.${f.ruleType}`).toLowerCase().includes(term),
+        (selectedSubscriptionId === "all" || f.subscriptionId === selectedSubscriptionId) &&
+        (!term ||
+          f.resourceId.toLowerCase().includes(term) ||
+          t(`rule.${f.ruleType}`).toLowerCase().includes(term)),
     );
-  }, [visibleFindings, search, t]);
+  }, [visibleFindings, search, selectedSubscriptionId, t]);
 
   async function handleTakeAction(findingId: string) {
     const response = await fetch(`/api/findings/${findingId}/dismiss`, { method: "POST" });
@@ -65,6 +68,20 @@ export function RecommendationsClient({
       />
 
       <main className="p-6">
+        {subscriptions.length > 1 && (
+          <select
+            value={selectedSubscriptionId}
+            onChange={(e) => setSelectedSubscriptionId(e.target.value)}
+            className="mb-4 rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
+          >
+            <option value="all">Todas as subscriptions</option>
+            {subscriptions.map((subscription) => (
+              <option key={subscription.id} value={subscription.id}>
+                {subscription.displayName}
+              </option>
+            ))}
+          </select>
+        )}
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-gray-200 text-left dark:border-gray-700">

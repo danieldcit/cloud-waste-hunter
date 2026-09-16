@@ -44,6 +44,7 @@ export async function addManagedClientWithSubscription(
   if (!trimmedName) {
     throw new Error("Client name is required");
   }
+
   if (!isValidSubscriptionId(azureSubscriptionId)) {
     throw new Error("Invalid subscription id");
   }
@@ -68,4 +69,86 @@ export async function addManagedClientWithSubscription(
   });
 
   return { client: { id: client.id, name: client.name }, subscriptionId: subscription.id };
+}
+
+export async function addManagedClientWithSubscriptions(
+  clientName: string,
+  subscriptions: { azureSubscriptionId: string; displayName: string }[],
+): Promise<{ client: { id: string; name: string }; subscriptionIds: string[] }> {
+  const operatorCustomerId = await getOperatorCustomerId();
+  const trimmedName = clientName.trim();
+  if (!trimmedName) throw new Error("Client name is required");
+  if (subscriptions.length === 0) throw new Error("At least one subscription is required");
+  for (const subscription of subscriptions) {
+    if (!isValidSubscriptionId(subscription.azureSubscriptionId)) {
+      throw new Error("Invalid subscription id");
+    }
+    if (!subscription.displayName.trim()) throw new Error("Display name is required");
+  }
+
+  const client = await prisma.customer.create({
+    data: {
+      entraTenantId: `managed:${crypto.randomUUID()}`,
+      name: trimmedName,
+      operatorCustomerId,
+      subscriptions: {
+        create: subscriptions.map((subscription) => ({
+          azureSubscriptionId: subscription.azureSubscriptionId.trim(),
+          displayName: subscription.displayName.trim(),
+        })),
+      },
+    },
+    include: { subscriptions: { select: { id: true } } },
+  });
+  return {
+    client: { id: client.id, name: client.name },
+    subscriptionIds: client.subscriptions.map((subscription) => subscription.id),
+  };
+}
+
+export async function addSubscriptionToManagedClient(
+  clientId: string,
+  azureSubscriptionId: string,
+  displayName: string,
+): Promise<{ id: string; displayName: string }> {
+  const operatorCustomerId = await getOperatorCustomerId();
+  const client = await prisma.customer.findFirst({
+    where: { id: clientId, operatorCustomerId },
+  });
+  if (!client) {
+    throw new Error("Managed client not found");
+  }
+  if (!isValidSubscriptionId(azureSubscriptionId)) {
+    throw new Error("Invalid subscription id");
+  }
+  const trimmedDisplayName = displayName.trim();
+  if (!trimmedDisplayName) {
+    throw new Error("Display name is required");
+  }
+  const subscription = await prisma.subscription.create({
+    data: {
+      customerId: client.id,
+      azureSubscriptionId: azureSubscriptionId.trim(),
+      displayName: trimmedDisplayName,
+    },
+  });
+  return { id: subscription.id, displayName: subscription.displayName };
+}
+
+export async function archiveManagedClient(clientId: string): Promise<void> {
+  const operatorCustomerId = await getOperatorCustomerId();
+  const result = await prisma.customer.updateMany({
+    where: { id: clientId, operatorCustomerId, archivedAt: null },
+    data: { archivedAt: new Date() },
+  });
+  if (result.count !== 1) throw new Error("Managed client not found");
+}
+
+export async function restoreManagedClient(clientId: string): Promise<void> {
+  const operatorCustomerId = await getOperatorCustomerId();
+  const result = await prisma.customer.updateMany({
+    where: { id: clientId, operatorCustomerId, archivedAt: { not: null } },
+    data: { archivedAt: null },
+  });
+  if (result.count !== 1) throw new Error("Managed client not found");
 }

@@ -280,12 +280,19 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
   const scanRun = await prisma.scanRun.create({
     data: { subscriptionId: subscription.id, status: "RUNNING" },
   });
+  const updateProgress = (progress: number) =>
+    prisma.scanRun.update({
+      where: { id: scanRun.id },
+      data: { progress },
+    });
 
   try {
+    await updateProgress(5);
     const resources = await queryResourceGraph(
       [subscription.azureSubscriptionId],
       COMBINED_QUERY,
     );
+    await updateProgress(15);
 
     await prisma.resource.deleteMany({
       where: { subscriptionId: subscription.id },
@@ -308,6 +315,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         })),
       });
     }
+    await updateProgress(25);
 
     // Rules that degraded to `[]` this scan because they threw. A degraded rule
     // produced no candidates for reasons that have nothing to do with the customer
@@ -555,14 +563,18 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
       ...findDisabledLogicApps(resources),
       ...findIdleAutomationAccounts(resources),
     ];
+    await updateProgress(45);
 
     const resourceById = new Map<string, ResourceGraphRow>(
       resources.map((r) => [r.id, r]),
     );
 
-    for (const candidate of candidates) {
+    for (const [candidateIndex, candidate] of candidates.entries()) {
       const resource = resourceById.get(candidate.resourceId);
       const costResource = resolveCostResource(resource, resources);
+      if (candidateIndex % 5 === 0) {
+        await updateProgress(45 + Math.round((candidateIndex / Math.max(candidates.length, 1)) * 35));
+      }
 
       let estimatedMonthlyCost = 0;
       try {
@@ -576,6 +588,7 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           error,
         );
       }
+      await updateProgress(80);
 
       if (estimatedMonthlyCost === 0 && costResource) {
         try {
@@ -867,10 +880,11 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
     }
 
     await captureCostSnapshot(subscription.id, subscription.azureSubscriptionId);
+    await updateProgress(95);
 
     await prisma.scanRun.update({
       where: { id: scanRun.id },
-      data: { status: "SUCCEEDED", finishedAt: new Date() },
+      data: { status: "SUCCEEDED", progress: 100, finishedAt: new Date() },
     });
   } catch (error) {
     await prisma.scanRun.update({

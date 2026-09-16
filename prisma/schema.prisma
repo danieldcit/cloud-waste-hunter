@@ -12,6 +12,7 @@ model Customer {
   entraTenantId      String         @unique
   name               String
   createdAt          DateTime       @default(now())
+  archivedAt         DateTime?
   operatorCustomerId String?
   operator           Customer?      @relation("OperatorClients", fields: [operatorCustomerId], references: [id])
   managedClients     Customer[]     @relation("OperatorClients")
@@ -64,6 +65,7 @@ model ScanRun {
   startedAt      DateTime     @default(now())
   finishedAt     DateTime?
   status         ScanStatus   @default(RUNNING)
+  progress       Int        @default(0)
   resources      Resource[]
 }
 

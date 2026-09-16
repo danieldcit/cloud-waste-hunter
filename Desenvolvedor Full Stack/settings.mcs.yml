@@ -1,0 +1,20 @@
+displayName: Desenvolvedor Full Stack
+schemaName: cr740_desenvolvedorfullsstack_8Luuxb
+accessControlPolicy: GroupMembership
+authenticationMode: Integrated
+authenticationTrigger: Always
+configuration:
+  recognizer:
+    kind: CLICopilotRecognizer
+
+  agentSettings:
+    model:
+      series: GPT5Chat
+
+    instructions: {}
+    web:
+      enableWebSearch: true
+
+publishedOn: 2026-09-16T18:24:36.0000000Z
+template: cliagent-1.0.0
+language: 1033

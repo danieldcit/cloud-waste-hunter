@@ -35,7 +35,7 @@ export async function resolveActiveCustomerId(
     return operatorCustomerId;
   }
   const candidate = await prisma.customer.findUnique({
-    where: { id: activeClientCookieValue },
+    where: { id: activeClientCookieValue, archivedAt: null },
     select: { id: true, operatorCustomerId: true },
   });
   if (candidate && candidate.operatorCustomerId === operatorCustomerId) {
@@ -49,7 +49,7 @@ export async function getManagedClients(
   operatorCustomerId: string,
 ): Promise<{ id: string; name: string }[]> {
   return prisma.customer.findMany({
-    where: { operatorCustomerId },
+    where: { operatorCustomerId, archivedAt: null },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });

@@ -39,11 +39,14 @@ export function ReportsClient({
 }) {
   const { t } = useLocale();
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState(
-    subscriptions[0]?.id ?? "",
+    "all",
   );
 
   const subscriptionFindings = useMemo(
-    () => findings.filter((f) => f.subscriptionId === selectedSubscriptionId),
+    () =>
+      selectedSubscriptionId === "all"
+        ? findings
+        : findings.filter((f) => f.subscriptionId === selectedSubscriptionId),
     [findings, selectedSubscriptionId],
   );
 
@@ -88,6 +91,7 @@ export function ReportsClient({
               onChange={(e) => setSelectedSubscriptionId(e.target.value)}
               className="rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
             >
+              <option value="all">Todas as subscriptions</option>
               {subscriptions.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.displayName}
@@ -97,7 +101,7 @@ export function ReportsClient({
           </div>
         )}
 
-        {selectedSubscriptionId && (
+        {selectedSubscriptionId !== "all" && selectedSubscriptionId && (
           <a
             href={`/api/reports/${selectedSubscriptionId}/pdf`}
             className="mb-6 inline-block rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"

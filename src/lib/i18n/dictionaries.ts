@@ -154,7 +154,7 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.addClientFailed": "Não foi possível adicionar este cliente",
     "ambientes.clientAdded": "Cliente adicionado",
     "ambientes.submit": "Adicionar",
-    "ambientes.verify": "Verificar conexão",
+    "ambientes.verify": "Atualizar",
     "ambientes.pending": "Pendente",
     "ambientes.connected": "Conectado",
     "ambientes.lastScan": "Último scan",
@@ -163,7 +163,7 @@ const dictionaries: Record<Locale, Dictionary> = {
       "Esta conexão precisa de uma permissão adicional para novas verificações",
     "ambientes.updatePermissions": "Atualizar permissões",
     "ambientes.deployInstructions":
-      "Implante o template Azure Lighthouse abaixo e depois clique em Verificar conexão.",
+      "Clique em AZ Login para acessar esta subscription no Azure e depois clique em Atualizar.",
     "reports.savingsChartTitle": "Economia resolvida por mês",
     "reports.countChartTitle": "Findings abertos vs. resolvidos por mês",
     "reports.downloadPdf": "Baixar PDF",

@@ -14,6 +14,10 @@ export default async function RecommendationsPage() {
     where: { subscription: { customerId }, status: "OPEN" },
     include: { subscription: true },
   });
+  const subscriptions = await prisma.subscription.findMany({
+    where: { customerId, status: "CONNECTED" },
+    orderBy: { createdAt: "asc" },
+  });
 
   return (
     <RecommendationsClient
@@ -22,8 +26,10 @@ export default async function RecommendationsPage() {
       operatorCustomerId={operatorCustomerId}
       activeClientId={customerId}
       managedClients={managedClients}
+      subscriptions={subscriptions.map((s) => ({ id: s.id, displayName: s.displayName }))}
       findings={sortByImpact(findings).map((f) => ({
         id: f.id,
+        subscriptionId: f.subscriptionId,
         ruleType: f.ruleType,
         resourceId: f.resourceId,
         subscriptionName: f.subscription.displayName,

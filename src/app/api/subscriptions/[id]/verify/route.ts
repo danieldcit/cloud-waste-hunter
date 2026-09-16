@@ -1,14 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireCustomerId } from "@/lib/tenant";
+import { getOperatorCustomerId } from "@/lib/tenant";
 import { armFetch } from "@/lib/azure/armFetch";
+import { getAzureTenantForSubscription, withAzureTenant } from "@/lib/azure/credential";
 import { runScan } from "@/lib/scanner/runScan";
-import { getGrantedRoleIds } from "@/lib/azure/lighthouseAssignment";
-import { needsPermissionUpgrade } from "@/lib/azure/lighthouseRoles";
-
-interface RegistrationAssignmentListResponse {
-  value: { id: string }[];
-}
 
 interface SubscriptionDetailsResponse {
   tenantId: string;
@@ -18,25 +13,27 @@ export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const customerId = await requireCustomerId();
+  const operatorCustomerId = await getOperatorCustomerId();
   const { id } = await params;
 
   const subscription = await prisma.subscription.findFirst({
-    where: { id, customerId },
+    where: {
+      id,
+      customer: {
+        OR: [{ id: operatorCustomerId }, { operatorCustomerId }],
+        archivedAt: null,
+      },
+    },
   });
   if (!subscription) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const url = `https://management.azure.com/subscriptions/${subscription.azureSubscriptionId}/providers/Microsoft.ManagedServices/registrationAssignments?api-version=2022-10-01`;
-  const result = await armFetch<RegistrationAssignmentListResponse>(url);
-
-  if (result.value.length === 0) {
-    return NextResponse.json({ error: "Lighthouse delegation not found yet" }, { status: 409 });
-  }
-
+  try {
+  const tenantId = await getAzureTenantForSubscription(subscription.azureSubscriptionId);
+  return await withAzureTenant(tenantId, async () => {
   const customer = await prisma.customer.findUniqueOrThrow({
-    where: { id: customerId },
+    where: { id: subscription.customerId },
   });
 
   const subscriptionDetailsUrl = `https://management.azure.com/subscriptions/${subscription.azureSubscriptionId}?api-version=2020-01-01`;
@@ -53,31 +50,46 @@ export async function POST(
     }
   }
 
-  let grantedRoleIds: string[] | undefined;
-  try {
-    grantedRoleIds = await getGrantedRoleIds(subscription.azureSubscriptionId);
-  } catch (error) {
-    console.error(
-      `Failed to read granted Lighthouse roles for subscription ${subscription.id}`,
-      error,
-    );
-  }
-
   const updated = await prisma.subscription.update({
     where: { id: subscription.id },
     data: {
       status: "CONNECTED",
       connectedAt: new Date(),
-      ...(grantedRoleIds ? { grantedRoleIds } : {}),
+      grantedRoleIds: [],
     },
   });
 
-  runScan(updated.id).catch((error) => {
-    console.error(`Initial scan failed for subscription ${updated.id}`, error);
+  try {
+    await runScan(updated.id);
+  } catch (error) {
+    await prisma.subscription.update({
+      where: { id: updated.id },
+      data: { status: "ERROR" },
+    });
+    throw error;
+  }
+  const completedScan = await prisma.scanRun.findFirst({
+    where: { subscriptionId: updated.id, status: "SUCCEEDED" },
+    orderBy: { finishedAt: "desc" },
+    select: { finishedAt: true },
   });
 
-  return NextResponse.json({
-    status: updated.status,
-    needsPermissionUpgrade: needsPermissionUpgrade(updated.grantedRoleIds),
+    return NextResponse.json({
+      status: updated.status,
+      accessMode: "DIRECT_READ_ONLY",
+      needsPermissionUpgrade: false,
+      lastScanAt: completedScan?.finishedAt?.toISOString() ?? null,
+    });
   });
+  } catch (error) {
+    console.error(`Failed to verify Azure subscription ${subscription.id}`, error);
+    const detail = error instanceof Error ? error.message : "Erro desconhecido";
+    return NextResponse.json(
+      {
+        error:
+          `Não foi possível acessar esta subscription no Azure: ${detail}`,
+      },
+      { status: 502 },
+    );
+  }
 }

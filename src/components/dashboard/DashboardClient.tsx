@@ -60,15 +60,45 @@ export function DashboardClient({
     useState<CostManagementSubcategory | "all">("all");
   const [search, setSearch] = useState("");
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState(
-    subscriptions[0]?.id ?? "",
+    "all",
   );
   const [visibleFindings, setVisibleFindings] = useState(findings);
 
-  const selectedSubscription = subscriptions.find((s) => s.id === selectedSubscriptionId);
+  const selectedSubscription = useMemo(() => {
+    if (selectedSubscriptionId === "all") {
+      const dailyTrend = new Map<string, number>();
+      for (const subscription of subscriptions) {
+        for (const point of subscription.dailyTrend) {
+          dailyTrend.set(point.date, (dailyTrend.get(point.date) ?? 0) + point.cost);
+        }
+      }
+      return {
+        id: "all",
+        displayName: "Todas as subscriptions",
+        monthToDateSpend: subscriptions.reduce(
+          (total, subscription) => total + (subscription.monthToDateSpend ?? 0),
+          0,
+        ),
+        projectedSpend: subscriptions.reduce(
+          (total, subscription) => total + (subscription.projectedSpend ?? 0),
+          0,
+        ),
+        dailyTrend: [...dailyTrend.entries()].map(([date, cost]) => ({ date, cost })),
+      };
+    }
+    return subscriptions.find((s) => s.id === selectedSubscriptionId);
+  }, [subscriptions, selectedSubscriptionId]);
+  const selectedFindings =
+    selectedSubscriptionId === "all"
+      ? visibleFindings
+      : visibleFindings.filter((f) => {
+          const subscription = subscriptions.find((s) => s.id === selectedSubscriptionId);
+          return subscription?.displayName === f.subscriptionName;
+        });
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return visibleFindings.filter((f) => {
+    return selectedFindings.filter((f) => {
       if (categoryFilter !== "all" && categoryForRule(f.ruleType) !== categoryFilter) {
         return false;
       }
@@ -87,7 +117,7 @@ export function DashboardClient({
         t(`rule.${f.ruleType}`).toLowerCase().includes(term)
       );
     });
-  }, [visibleFindings, categoryFilter, costSubcategoryFilter, search, t]);
+  }, [selectedFindings, categoryFilter, costSubcategoryFilter, search, t]);
 
   async function handleTakeAction(findingId: string) {
     const response = await fetch(`/api/findings/${findingId}/dismiss`, { method: "POST" });
@@ -115,6 +145,7 @@ export function DashboardClient({
               onChange={(e) => setSelectedSubscriptionId(e.target.value)}
               className="rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
             >
+              <option value="all">Todas as subscriptions</option>
               {subscriptions.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.displayName}
