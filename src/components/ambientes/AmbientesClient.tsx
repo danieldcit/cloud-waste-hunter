@@ -44,16 +44,16 @@ function formatLastScan(lastScanAt: string | null, neverScannedLabel: string): s
 }
 
 function getAzureLoginUrl(subscription: AmbienteRow): string {
-  if (!subscription.tenantId) {
-    return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?prompt=login`;
-  }
-
-  const tenant = encodeURIComponent(subscription.tenantId);
-  return `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?client_id=1950a258-227b-4e31-a9cf-717495945fc2&response_type=code&redirect_uri=${encodeURIComponent(
-    "https://portal.azure.com/signin/index/",
-  )}&response_mode=query&scope=${encodeURIComponent(
-    "openid profile",
-  )}&prompt=select_account`;
+  const tenant = encodeURIComponent(subscription.tenantId ?? "common");
+  const params = new URLSearchParams({
+    client_id: "1950a258-227b-4e31-a9cf-717495945fc2",
+    response_type: "code",
+    redirect_uri: "https://portal.azure.com/signin/index/",
+    response_mode: "query",
+    scope: "openid profile",
+    prompt: "select_account",
+  });
+  return `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`;
 }
 
 export function AmbientesClient({
