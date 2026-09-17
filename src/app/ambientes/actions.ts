@@ -36,9 +36,12 @@ export async function addManagedClient(name: string): Promise<{ id: string; name
 export async function addManagedClientWithSubscription(
   clientName: string,
   azureSubscriptionId: string,
-  displayName: string,
+  azureTenantIdOrDisplayName: string,
+  displayName?: string,
 ): Promise<{ client: { id: string; name: string }; subscriptionId: string }> {
   const operatorCustomerId = await getOperatorCustomerId();
+  const azureTenantId = displayName === undefined ? null : azureTenantIdOrDisplayName;
+  const trimmedDisplayName = (displayName ?? azureTenantIdOrDisplayName).trim();
 
   const trimmedName = clientName.trim();
   if (!trimmedName) {
@@ -48,7 +51,9 @@ export async function addManagedClientWithSubscription(
   if (!isValidSubscriptionId(azureSubscriptionId)) {
     throw new Error("Invalid subscription id");
   }
-  const trimmedDisplayName = displayName.trim();
+  if (azureTenantId !== null && !isValidSubscriptionId(azureTenantId)) {
+    throw new Error("Invalid tenant id");
+  }
   if (!trimmedDisplayName) {
     throw new Error("Display name is required");
   }
@@ -64,6 +69,7 @@ export async function addManagedClientWithSubscription(
     data: {
       customerId: client.id,
       azureSubscriptionId: azureSubscriptionId.trim(),
+      azureTenantId: azureTenantId?.trim(),
       displayName: trimmedDisplayName,
     },
   });
@@ -73,7 +79,7 @@ export async function addManagedClientWithSubscription(
 
 export async function addManagedClientWithSubscriptions(
   clientName: string,
-  subscriptions: { azureSubscriptionId: string; displayName: string }[],
+  subscriptions: { azureSubscriptionId: string; azureTenantId: string; displayName: string }[],
 ): Promise<{ client: { id: string; name: string }; subscriptionIds: string[] }> {
   const operatorCustomerId = await getOperatorCustomerId();
   const trimmedName = clientName.trim();
@@ -82,6 +88,9 @@ export async function addManagedClientWithSubscriptions(
   for (const subscription of subscriptions) {
     if (!isValidSubscriptionId(subscription.azureSubscriptionId)) {
       throw new Error("Invalid subscription id");
+    }
+    if (!isValidSubscriptionId(subscription.azureTenantId)) {
+      throw new Error("Invalid tenant id");
     }
     if (!subscription.displayName.trim()) throw new Error("Display name is required");
   }
@@ -94,6 +103,7 @@ export async function addManagedClientWithSubscriptions(
       subscriptions: {
         create: subscriptions.map((subscription) => ({
           azureSubscriptionId: subscription.azureSubscriptionId.trim(),
+          azureTenantId: subscription.azureTenantId.trim(),
           displayName: subscription.displayName.trim(),
         })),
       },
@@ -109,6 +119,7 @@ export async function addManagedClientWithSubscriptions(
 export async function addSubscriptionToManagedClient(
   clientId: string,
   azureSubscriptionId: string,
+  azureTenantId: string,
   displayName: string,
 ): Promise<{ id: string; displayName: string }> {
   const operatorCustomerId = await getOperatorCustomerId();
@@ -121,6 +132,9 @@ export async function addSubscriptionToManagedClient(
   if (!isValidSubscriptionId(azureSubscriptionId)) {
     throw new Error("Invalid subscription id");
   }
+  if (!isValidSubscriptionId(azureTenantId)) {
+    throw new Error("Invalid tenant id");
+  }
   const trimmedDisplayName = displayName.trim();
   if (!trimmedDisplayName) {
     throw new Error("Display name is required");
@@ -129,6 +143,7 @@ export async function addSubscriptionToManagedClient(
     data: {
       customerId: client.id,
       azureSubscriptionId: azureSubscriptionId.trim(),
+      azureTenantId: azureTenantId.trim(),
       displayName: trimmedDisplayName,
     },
   });

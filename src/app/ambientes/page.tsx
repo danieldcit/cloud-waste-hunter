@@ -42,6 +42,7 @@ export default async function AmbientesPage() {
 
   const tenantIds = await Promise.all(
     subscriptions.map((subscription) =>
+      subscription.azureTenantId ??
       tryGetAzureTenantForSubscription(subscription.azureSubscriptionId),
     ),
   );
@@ -62,6 +63,7 @@ export default async function AmbientesPage() {
         id: s.id,
         customerId: s.customerId,
         azureSubscriptionId: s.azureSubscriptionId,
+        azureTenantId: s.azureTenantId,
         displayName: s.displayName,
         tenantId: tenantIds[index],
         status: s.status,

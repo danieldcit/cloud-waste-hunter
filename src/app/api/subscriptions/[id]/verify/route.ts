@@ -30,7 +30,9 @@ export async function POST(
   }
 
   try {
-  const tenantId = await getAzureTenantForSubscription(subscription.azureSubscriptionId);
+  const tenantId =
+    subscription.azureTenantId ??
+    (await getAzureTenantForSubscription(subscription.azureSubscriptionId));
   return await withAzureTenant(tenantId, async () => {
   const customer = await prisma.customer.findUniqueOrThrow({
     where: { id: subscription.customerId },

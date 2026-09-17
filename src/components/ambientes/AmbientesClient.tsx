@@ -15,6 +15,7 @@ interface AmbienteRow {
   id: string;
   customerId: string;
   azureSubscriptionId: string;
+  azureTenantId: string | null;
   displayName: string;
   tenantId: string | null;
   status: "PENDING" | "CONNECTED" | "ERROR";
@@ -83,9 +84,10 @@ export function AmbientesClient({
   const [clientAddedMessage, setClientAddedMessage] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
   const [azureSubscriptionId, setAzureSubscriptionId] = useState("");
+  const [azureTenantId, setAzureTenantId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [subscriptionDrafts, setSubscriptionDrafts] = useState([
-    { azureSubscriptionId: "", displayName: "" },
+    { azureSubscriptionId: "", azureTenantId: "", displayName: "" },
   ]);
   const [verifyMessageBySubscription, setVerifyMessageBySubscription] = useState<
     Record<string, string>
@@ -206,10 +208,14 @@ export function AmbientesClient({
     }
 
     const drafts = selectedClientId
-      ? [{ azureSubscriptionId, displayName }]
+      ? [{ azureSubscriptionId, azureTenantId, displayName }]
       : subscriptionDrafts;
     if (drafts.some((draft) => !isValidSubscriptionId(draft.azureSubscriptionId))) {
       setClientFormError(t("ambientes.subscriptionIdInvalid"));
+      return;
+    }
+    if (drafts.some((draft) => !isValidSubscriptionId(draft.azureTenantId))) {
+      setClientFormError(t("ambientes.tenantIdInvalid"));
       return;
     }
     if (drafts.some((draft) => !draft.displayName.trim())) {
@@ -224,6 +230,7 @@ export function AmbientesClient({
             addSubscriptionToManagedClient(
               selectedClientId,
               draft.azureSubscriptionId,
+              draft.azureTenantId,
               draft.displayName,
             ),
           ),
@@ -233,6 +240,7 @@ export function AmbientesClient({
             id: created.id,
             customerId: selectedClientId,
             azureSubscriptionId: drafts[index].azureSubscriptionId.trim(),
+            azureTenantId: drafts[index].azureTenantId.trim(),
             displayName: created.displayName,
             tenantId: null,
             status: "PENDING" as const,
@@ -269,8 +277,9 @@ export function AmbientesClient({
       setNewClientName("");
       setSelectedClientId("");
       setAzureSubscriptionId("");
+      setAzureTenantId("");
       setDisplayName("");
-      setSubscriptionDrafts([{ azureSubscriptionId: "", displayName: "" }]);
+      setSubscriptionDrafts([{ azureSubscriptionId: "", azureTenantId: "", displayName: "" }]);
     } catch {
       setClientFormError(t("ambientes.addClientFailed"));
     }
@@ -405,6 +414,25 @@ export function AmbientesClient({
             />
           </div>
           <div>
+            <label className="block text-sm mb-1" htmlFor="azureTenantId">
+              {t("ambientes.tenantId")}
+            </label>
+            <input
+              id="azureTenantId"
+              className="border rounded px-3 py-2"
+              value={selectedClientId ? azureTenantId : subscriptionDrafts[0].azureTenantId}
+              onChange={(e) =>
+                selectedClientId
+                  ? setAzureTenantId(e.target.value)
+                  : setSubscriptionDrafts((current) =>
+                      current.map((draft, index) =>
+                        index === 0 ? { ...draft, azureTenantId: e.target.value } : draft,
+                      ),
+                    )
+              }
+            />
+          </div>
+          <div>
             <label className="block text-sm mb-1" htmlFor="displayName">
               {t("ambientes.displayName")}
             </label>
@@ -444,6 +472,20 @@ export function AmbientesClient({
                 />
                 <input
                   className="border rounded px-3 py-2"
+                  placeholder={t("ambientes.tenantId")}
+                  value={draft.azureTenantId}
+                  onChange={(e) =>
+                    setSubscriptionDrafts((current) =>
+                      current.map((item, itemIndex) =>
+                        itemIndex === index + 1
+                          ? { ...item, azureTenantId: e.target.value }
+                          : item,
+                      ),
+                    )
+                  }
+                />
+                <input
+                  className="border rounded px-3 py-2"
                   placeholder={t("ambientes.displayName")}
                   value={draft.displayName}
                   onChange={(e) =>
@@ -467,7 +509,7 @@ export function AmbientesClient({
             onClick={() =>
               setSubscriptionDrafts((current) => [
                 ...current,
-                { azureSubscriptionId: "", displayName: "" },
+                { azureSubscriptionId: "", azureTenantId: "", displayName: "" },
               ])
             }
           >

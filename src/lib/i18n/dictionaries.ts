@@ -147,6 +147,7 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.title": "Ambientes",
     "ambientes.addButton": "+ Adicionar ambiente",
     "ambientes.subscriptionId": "ID da subscription",
+    "ambientes.tenantId": "ID do tenant",
     "ambientes.displayName": "Nome de exibição",
     "ambientes.clientsHeading": "Clientes",
     "ambientes.clientName": "Nome do cliente",
@@ -177,6 +178,7 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.connectionFailed":
       "Não foi possível verificar a conexão. Verifique a configuração de acesso ao Azure.",
     "ambientes.subscriptionIdInvalid": "ID de subscription inválido",
+    "ambientes.tenantIdInvalid": "ID do tenant inválido",
     "ambientes.displayNameRequired": "Nome de exibição é obrigatório",
     "ambientes.newClient": "Novo cliente",
     "ambientes.addSubscription": "+ Subscription",
@@ -333,6 +335,7 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.title": "Environments",
     "ambientes.addButton": "+ Add environment",
     "ambientes.subscriptionId": "Subscription ID",
+    "ambientes.tenantId": "Tenant ID",
     "ambientes.displayName": "Display name",
     "ambientes.clientsHeading": "Clients",
     "ambientes.clientName": "Client name",
@@ -363,6 +366,7 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.connectionFailed":
       "Could not verify the connection. Check the Azure access configuration.",
     "ambientes.subscriptionIdInvalid": "Invalid subscription ID",
+    "ambientes.tenantIdInvalid": "Invalid tenant ID",
     "ambientes.displayNameRequired": "Display name is required",
     "ambientes.newClient": "New client",
     "ambientes.addSubscription": "+ Subscription",
@@ -506,6 +510,7 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.title": "Entornos",
     "ambientes.addButton": "+ Agregar entorno",
     "ambientes.subscriptionId": "ID de suscripción",
+    "ambientes.tenantId": "ID del tenant",
     "ambientes.displayName": "Nombre visible",
     "ambientes.clientsHeading": "Clientes",
     "ambientes.clientName": "Nombre del cliente",
@@ -536,6 +541,7 @@ const dictionaries: Record<Locale, Dictionary> = {
     "ambientes.connectionFailed":
       "No se pudo verificar la conexión. Compruebe la configuración de acceso de Azure.",
     "ambientes.subscriptionIdInvalid": "ID de suscripción no válido",
+    "ambientes.tenantIdInvalid": "ID del tenant no válido",
     "ambientes.displayNameRequired": "El nombre visible es obligatorio",
     "ambientes.newClient": "Nuevo cliente",
     "ambientes.addSubscription": "+ Suscripción",

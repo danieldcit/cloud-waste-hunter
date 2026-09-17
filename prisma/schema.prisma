@@ -41,6 +41,7 @@ model Subscription {
   customerId          String
   customer            Customer           @relation(fields: [customerId], references: [id])
   azureSubscriptionId String             @unique
+  azureTenantId       String?
   displayName         String
   status              SubscriptionStatus @default(PENDING)
   connectedAt         DateTime?
