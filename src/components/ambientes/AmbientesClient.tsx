@@ -5,7 +5,6 @@ import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { isValidSubscriptionId } from "@/lib/ambientes/validateSubscriptionId";
 import {
   addManagedClientWithSubscriptions,
-  addSubscriptionToManagedClient,
   archiveManagedClient,
   restoreManagedClient,
 } from "@/app/ambientes/actions";
@@ -79,13 +78,9 @@ export function AmbientesClient({
   const [allClients, setAllClients] = useState(initialAllClients);
   const archivedClients = initialArchivedClients;
   const [newClientName, setNewClientName] = useState("");
-  const [selectedClientId, setSelectedClientId] = useState("");
   const [clientFormError, setClientFormError] = useState<string | null>(null);
   const [clientAddedMessage, setClientAddedMessage] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
-  const [azureSubscriptionId, setAzureSubscriptionId] = useState("");
-  const [azureTenantId, setAzureTenantId] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [subscriptionDrafts, setSubscriptionDrafts] = useState([
     { azureSubscriptionId: "", azureTenantId: "", displayName: "" },
   ]);
@@ -110,19 +105,14 @@ export function AmbientesClient({
       ...current,
       [subscriptionRowId]: t("ambientes.verifyInProgress"),
     }));
-    const startedAt = Date.now();
     const poll = window.setInterval(async () => {
       try {
         const statusResponse = await fetch(`/api/subscriptions/${subscriptionRowId}/scan-status`);
         if (statusResponse.ok) {
           const status = await statusResponse.json();
-          const elapsedProgress = Math.min(
-            90,
-            5 + Math.floor((Date.now() - startedAt) / 2000) * 5,
-          );
           setScanProgressBySubscription((current) => ({
             ...current,
-            [subscriptionRowId]: Math.max(status.progress ?? 0, elapsedProgress),
+            [subscriptionRowId]: Math.max(0, Math.min(100, status.progress ?? 0)),
           }));
         }
 
@@ -202,14 +192,12 @@ export function AmbientesClient({
     event.preventDefault();
     setClientAddedMessage(null);
     const trimmedName = newClientName.trim();
-    if (!selectedClientId && !trimmedName) {
+    if (!trimmedName) {
       setClientFormError(t("ambientes.clientNameRequired"));
       return;
     }
 
-    const drafts = selectedClientId
-      ? [{ azureSubscriptionId, azureTenantId, displayName }]
-      : subscriptionDrafts;
+    const drafts = subscriptionDrafts;
     if (drafts.some((draft) => !isValidSubscriptionId(draft.azureSubscriptionId))) {
       setClientFormError(t("ambientes.subscriptionIdInvalid"));
       return;
@@ -224,75 +212,35 @@ export function AmbientesClient({
     }
     setClientFormError(null);
     try {
-      if (selectedClientId) {
-        const createdSubscriptions = await Promise.all(
-          drafts.map((draft) =>
-            addSubscriptionToManagedClient(
-              selectedClientId,
-              draft.azureSubscriptionId,
-              draft.azureTenantId,
-              draft.displayName,
-            ),
-          ),
+      const created = await addManagedClientWithSubscriptions(trimmedName, drafts);
+      setManagedClients((current) =>
+        [...current, created.client].sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setAllClients((current) =>
+        [...current, created.client].sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setSubscriptions((current) => [
+        ...created.subscriptions.map((subscription) => ({
+          id: subscription.id,
+          customerId: created.client.id,
+          azureSubscriptionId: subscription.azureSubscriptionId,
+          azureTenantId: subscription.azureTenantId,
+          displayName: subscription.displayName,
+          tenantId: subscription.azureTenantId,
+          status: "PENDING" as const,
+          lastScanAt: null,
+          needsPermissionUpgrade: false,
+        })),
+        ...current,
+      ]);
+      setClientAddedMessage(created.client.name);
+      setTimeout(() => {
+        void created.subscriptionIds.reduce(
+          (chain, subscriptionId) => chain.then(() => handleVerify(subscriptionId)),
+          Promise.resolve(),
         );
-        setSubscriptions((current) => [
-          ...createdSubscriptions.map((created, index) => ({
-            id: created.id,
-            customerId: selectedClientId,
-            azureSubscriptionId: drafts[index].azureSubscriptionId.trim(),
-            azureTenantId: drafts[index].azureTenantId.trim(),
-            displayName: created.displayName,
-            tenantId: null,
-            status: "PENDING" as const,
-            lastScanAt: null,
-            needsPermissionUpgrade: false,
-          })),
-          ...current,
-        ]);
-        setClientAddedMessage(
-          `${managedClients.find((client) => client.id === selectedClientId)?.name ?? ""} — ${createdSubscriptions.length} subscription(s)`,
-        );
-        setTimeout(() => {
-          void createdSubscriptions.reduce(
-            (chain, subscription) => chain.then(() => handleVerify(subscription.id)),
-            Promise.resolve(),
-          );
-        }, 0);
-      } else {
-        const created = await addManagedClientWithSubscriptions(trimmedName, drafts);
-        setManagedClients((current) =>
-          [...current, created.client].sort((a, b) => a.name.localeCompare(b.name)),
-        );
-        setAllClients((current) =>
-          [...current, created.client].sort((a, b) => a.name.localeCompare(b.name)),
-        );
-        setSubscriptions((current) => [
-          ...created.subscriptions.map((subscription) => ({
-            id: subscription.id,
-            customerId: created.client.id,
-            azureSubscriptionId: subscription.azureSubscriptionId,
-            azureTenantId: subscription.azureTenantId,
-            displayName: subscription.displayName,
-            tenantId: subscription.azureTenantId,
-            status: "PENDING" as const,
-            lastScanAt: null,
-            needsPermissionUpgrade: false,
-          })),
-          ...current,
-        ]);
-        setClientAddedMessage(created.client.name);
-        setTimeout(() => {
-          void created.subscriptionIds.reduce(
-            (chain, subscriptionId) => chain.then(() => handleVerify(subscriptionId)),
-            Promise.resolve(),
-          );
-        }, 0);
-      }
+      }, 0);
       setNewClientName("");
-      setSelectedClientId("");
-      setAzureSubscriptionId("");
-      setAzureTenantId("");
-      setDisplayName("");
       setSubscriptionDrafts([{ azureSubscriptionId: "", azureTenantId: "", displayName: "" }]);
     } catch {
       setClientFormError(t("ambientes.addClientFailed"));
@@ -385,27 +333,13 @@ export function AmbientesClient({
           <label className="block text-sm mb-1" htmlFor="clientName">
             Cliente
           </label>
-          <select
+          <input
             id="clientName"
             className="border rounded px-3 py-2"
-            value={selectedClientId}
-            onChange={(e) => setSelectedClientId(e.target.value)}
-          >
-            <option value="">{t("ambientes.newClient")}</option>
-            {managedClients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </select>
-          {!selectedClientId && (
-            <input
-              className="mt-2 border rounded px-3 py-2"
-              placeholder={t("ambientes.clientName")}
-              value={newClientName}
-              onChange={(e) => setNewClientName(e.target.value)}
-            />
-          )}
+            placeholder={t("ambientes.clientName")}
+            value={newClientName}
+            onChange={(e) => setNewClientName(e.target.value)}
+          />
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <div>
@@ -415,15 +349,13 @@ export function AmbientesClient({
             <input
               id="azureSubscriptionId"
               className="border rounded px-3 py-2"
-              value={selectedClientId ? azureSubscriptionId : subscriptionDrafts[0].azureSubscriptionId}
+              value={subscriptionDrafts[0].azureSubscriptionId}
               onChange={(e) =>
-                selectedClientId
-                  ? setAzureSubscriptionId(e.target.value)
-                  : setSubscriptionDrafts((current) =>
-                      current.map((draft, index) =>
-                        index === 0 ? { ...draft, azureSubscriptionId: e.target.value } : draft,
-                      ),
-                    )
+                setSubscriptionDrafts((current) =>
+                  current.map((draft, index) =>
+                    index === 0 ? { ...draft, azureSubscriptionId: e.target.value } : draft,
+                  ),
+                )
               }
             />
           </div>
@@ -434,15 +366,13 @@ export function AmbientesClient({
             <input
               id="azureTenantId"
               className="border rounded px-3 py-2"
-              value={selectedClientId ? azureTenantId : subscriptionDrafts[0].azureTenantId}
+              value={subscriptionDrafts[0].azureTenantId}
               onChange={(e) =>
-                selectedClientId
-                  ? setAzureTenantId(e.target.value)
-                  : setSubscriptionDrafts((current) =>
-                      current.map((draft, index) =>
-                        index === 0 ? { ...draft, azureTenantId: e.target.value } : draft,
-                      ),
-                    )
+                setSubscriptionDrafts((current) =>
+                  current.map((draft, index) =>
+                    index === 0 ? { ...draft, azureTenantId: e.target.value } : draft,
+                  ),
+                )
               }
             />
           </div>
@@ -453,20 +383,18 @@ export function AmbientesClient({
             <input
               id="displayName"
               className="border rounded px-3 py-2"
-              value={selectedClientId ? displayName : subscriptionDrafts[0].displayName}
+              value={subscriptionDrafts[0].displayName}
               onChange={(e) =>
-                selectedClientId
-                  ? setDisplayName(e.target.value)
-                  : setSubscriptionDrafts((current) =>
-                      current.map((draft, index) =>
-                        index === 0 ? { ...draft, displayName: e.target.value } : draft,
-                      ),
-                    )
+                setSubscriptionDrafts((current) =>
+                  current.map((draft, index) =>
+                    index === 0 ? { ...draft, displayName: e.target.value } : draft,
+                  ),
+                )
               }
             />
           </div>
         </div>
-        {!selectedClientId && subscriptionDrafts.length > 1 && (
+        {subscriptionDrafts.length > 1 && (
           <div className="flex flex-col gap-2">
             {subscriptionDrafts.slice(1).map((draft, index) => (
               <div key={index + 1} className="flex flex-wrap items-end gap-3">
@@ -516,20 +444,18 @@ export function AmbientesClient({
             ))}
           </div>
         )}
-        {!selectedClientId && (
-          <button
-            type="button"
-            className="border rounded px-3 py-2"
-            onClick={() =>
-              setSubscriptionDrafts((current) => [
-                ...current,
-                { azureSubscriptionId: "", azureTenantId: "", displayName: "" },
-              ])
-            }
-          >
-            {t("ambientes.addSubscription")}
-          </button>
-        )}
+        <button
+          type="button"
+          className="border rounded px-3 py-2"
+          onClick={() =>
+            setSubscriptionDrafts((current) => [
+              ...current,
+              { azureSubscriptionId: "", azureTenantId: "", displayName: "" },
+            ])
+          }
+        >
+          {t("ambientes.addSubscription")}
+        </button>
         <button
           type="submit"
           className="bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700"
