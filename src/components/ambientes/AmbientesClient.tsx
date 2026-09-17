@@ -97,6 +97,7 @@ export function AmbientesClient({
   >({});
   const [expandedClients, setExpandedClients] = useState<Record<string, boolean>>({});
   const [expandedArchivedClients, setExpandedArchivedClients] = useState<Record<string, boolean>>({});
+  const [trashExpanded, setTrashExpanded] = useState(true);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [editingClientName, setEditingClientName] = useState("");
   const [editingSubscription, setEditingSubscription] = useState({
@@ -746,9 +747,17 @@ export function AmbientesClient({
 
       {archivedClients.length > 0 && (
         <section className="mt-6 rounded border border-gray-300 p-3">
-          <h2 className="mb-2 text-base font-semibold">{t("ambientes.trash")}</h2>
-          <ul className="space-y-2">
-            {archivedClients.map((client, clientIndex) => (
+          <button
+            type="button"
+            className="mb-2 flex items-center gap-2 text-left text-base font-semibold"
+            onClick={() => setTrashExpanded((current) => !current)}
+          >
+            <span>{trashExpanded ? "▾" : "▸"}</span>
+            <span>{t("ambientes.trash")}</span>
+          </button>
+          {trashExpanded && (
+            <ul className="space-y-2">
+              {archivedClients.map((client, clientIndex) => (
               <li
                 key={client.id}
                 className={`rounded-md border ${
@@ -798,8 +807,9 @@ export function AmbientesClient({
                   </div>
                 )}
               </li>
-            ))}
-          </ul>
+              ))}
+            </ul>
+          )}
         </section>
       )}
       </main>
