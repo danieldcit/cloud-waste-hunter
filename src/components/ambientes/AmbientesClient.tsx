@@ -546,27 +546,29 @@ export function AmbientesClient({
             {archivedClients.map((client) => (
               <li key={client.id} className="flex items-center justify-between rounded border p-3">
                 <span>{client.name}</span>
-                <button
-                  type="button"
-                  className="rounded bg-green-600 px-3 py-1 text-white"
-                  onClick={async () => {
-                    await restoreManagedClient(client.id);
-                    window.location.reload();
-                  }}
-                >
-                  {t("ambientes.restore")}
-                </button>
-                <button
-                  type="button"
-                  className="rounded bg-red-600 px-3 py-1 text-white"
-                  onClick={async () => {
-                    if (!window.confirm(t("ambientes.permanentDeleteConfirm"))) return;
-                    await permanentlyDeleteManagedClient(client.id);
-                    window.location.reload();
-                  }}
-                >
-                  {t("ambientes.permanentDelete")}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded bg-green-600 px-3 py-1 text-white"
+                    onClick={async () => {
+                      await restoreManagedClient(client.id);
+                      window.location.reload();
+                    }}
+                  >
+                    {t("ambientes.restore")}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded bg-red-600 px-3 py-1 text-white"
+                    onClick={async () => {
+                      if (!window.confirm(t("ambientes.permanentDeleteConfirm"))) return;
+                      await permanentlyDeleteManagedClient(client.id);
+                      window.location.reload();
+                    }}
+                  >
+                    {t("ambientes.permanentDelete")}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
