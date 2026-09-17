@@ -747,9 +747,16 @@ export function AmbientesClient({
         <section className="mt-6 rounded border border-gray-300 p-3">
           <h2 className="mb-2 text-base font-semibold">{t("ambientes.trash")}</h2>
           <ul className="space-y-2">
-            {archivedClients.map((client) => (
-              <li key={client.id} className="flex items-center justify-between rounded border p-3">
-                <span>{client.name}</span>
+            {archivedClients.map((client, clientIndex) => (
+              <li
+                key={client.id}
+                className={`flex items-center justify-between rounded-md border px-4 py-3 ${
+                  clientIndex % 2 === 0
+                    ? "border-slate-500 bg-slate-900"
+                    : "border-slate-700 bg-slate-950"
+                }`}
+              >
+                <span className="font-medium">{client.name}</span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
