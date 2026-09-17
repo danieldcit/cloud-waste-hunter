@@ -109,7 +109,9 @@ export function AmbientesClient({
   useEffect(() => {
     if (!editingClientId) return;
     function handleDocumentClick(event: MouseEvent) {
-      if (!editPanelRef.current?.contains(event.target as Node)) {
+      const target = event.target as HTMLElement;
+      if (target.closest("[data-client-edit-toggle]")) return;
+      if (!editPanelRef.current?.contains(target)) {
         setEditingClientId(null);
         setEditError(null);
       }
@@ -587,6 +589,7 @@ export function AmbientesClient({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    data-client-edit-toggle
                     className="rounded border px-2 py-1 text-sm"
                     onClick={() => {
                       if (editingClientId === client.id) {
