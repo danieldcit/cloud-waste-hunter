@@ -181,3 +181,25 @@ export async function restoreManagedClient(clientId: string): Promise<void> {
   });
   if (result.count !== 1) throw new Error("Managed client not found");
 }
+
+export async function permanentlyDeleteManagedClient(clientId: string): Promise<void> {
+  const operatorCustomerId = await getOperatorCustomerId();
+  const client = await prisma.customer.findFirst({
+    where: { id: clientId, operatorCustomerId, archivedAt: { not: null } },
+    select: { id: true, subscriptions: { select: { id: true } } },
+  });
+  if (!client) throw new Error("Managed client not found");
+
+  await prisma.$transaction(async (tx) => {
+    const subscriptionIds = client.subscriptions.map((subscription) => subscription.id);
+    if (subscriptionIds.length > 0) {
+      await tx.wasteFinding.deleteMany({ where: { subscriptionId: { in: subscriptionIds } } });
+      await tx.costSnapshot.deleteMany({ where: { subscriptionId: { in: subscriptionIds } } });
+      await tx.resource.deleteMany({ where: { subscriptionId: { in: subscriptionIds } } });
+      await tx.scanRun.deleteMany({ where: { subscriptionId: { in: subscriptionIds } } });
+      await tx.subscription.deleteMany({ where: { id: { in: subscriptionIds } } });
+    }
+    await tx.user.deleteMany({ where: { customerId: client.id } });
+    await tx.customer.delete({ where: { id: client.id } });
+  });
+}

@@ -6,6 +6,7 @@ import { isValidSubscriptionId } from "@/lib/ambientes/validateSubscriptionId";
 import {
   addManagedClientWithSubscriptions,
   archiveManagedClient,
+  permanentlyDeleteManagedClient,
   restoreManagedClient,
 } from "@/app/ambientes/actions";
 import { AppHeader } from "@/components/AppHeader";
@@ -554,6 +555,17 @@ export function AmbientesClient({
                   }}
                 >
                   {t("ambientes.restore")}
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-red-600 px-3 py-1 text-white"
+                  onClick={async () => {
+                    if (!window.confirm(t("ambientes.permanentDeleteConfirm"))) return;
+                    await permanentlyDeleteManagedClient(client.id);
+                    window.location.reload();
+                  }}
+                >
+                  {t("ambientes.permanentDelete")}
                 </button>
               </li>
             ))}
