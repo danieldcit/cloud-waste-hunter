@@ -80,7 +80,16 @@ export async function addManagedClientWithSubscription(
 export async function addManagedClientWithSubscriptions(
   clientName: string,
   subscriptions: { azureSubscriptionId: string; azureTenantId: string; displayName: string }[],
-): Promise<{ client: { id: string; name: string }; subscriptionIds: string[] }> {
+): Promise<{
+  client: { id: string; name: string };
+  subscriptionIds: string[];
+  subscriptions: {
+    id: string;
+    azureSubscriptionId: string;
+    azureTenantId: string | null;
+    displayName: string;
+  }[];
+}> {
   const operatorCustomerId = await getOperatorCustomerId();
   const trimmedName = clientName.trim();
   if (!trimmedName) throw new Error("Client name is required");
@@ -108,11 +117,16 @@ export async function addManagedClientWithSubscriptions(
         })),
       },
     },
-    include: { subscriptions: { select: { id: true } } },
+    include: {
+      subscriptions: {
+        select: { id: true, azureSubscriptionId: true, azureTenantId: true, displayName: true },
+      },
+    },
   });
   return {
     client: { id: client.id, name: client.name },
     subscriptionIds: client.subscriptions.map((subscription) => subscription.id),
+    subscriptions: client.subscriptions,
   };
 }
 

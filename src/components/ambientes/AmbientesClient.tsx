@@ -266,6 +266,20 @@ export function AmbientesClient({
         setAllClients((current) =>
           [...current, created.client].sort((a, b) => a.name.localeCompare(b.name)),
         );
+        setSubscriptions((current) => [
+          ...created.subscriptions.map((subscription) => ({
+            id: subscription.id,
+            customerId: created.client.id,
+            azureSubscriptionId: subscription.azureSubscriptionId,
+            azureTenantId: subscription.azureTenantId,
+            displayName: subscription.displayName,
+            tenantId: subscription.azureTenantId,
+            status: "PENDING" as const,
+            lastScanAt: null,
+            needsPermissionUpgrade: false,
+          })),
+          ...current,
+        ]);
         setClientAddedMessage(created.client.name);
         setTimeout(() => {
           void created.subscriptionIds.reduce(
