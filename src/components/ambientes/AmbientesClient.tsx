@@ -488,6 +488,12 @@ export function AmbientesClient({
       <div className="space-y-4">
         {allClients.map((client) => {
           const clientSubscriptions = subscriptions.filter((s) => s.customerId === client.id);
+          const scannedSubscriptions = clientSubscriptions.filter(
+            (subscription) => subscription.lastScanAt !== null,
+          );
+          const pendingSubscriptions = clientSubscriptions.filter(
+            (subscription) => subscription.lastScanAt === null,
+          );
           const expanded = expandedClients[client.id] ?? clientSubscriptions.length <= 1;
           return (
             <section key={client.id} className="rounded border border-gray-300 p-4">
@@ -518,7 +524,30 @@ export function AmbientesClient({
                   </button>
                 )}
               </div>
-              {expanded && <ul className="mt-3 space-y-3">{clientSubscriptions.map(renderSubscription)}</ul>}
+              {expanded && (
+                <div className="mt-3 space-y-5">
+                  {scannedSubscriptions.length > 0 && (
+                    <div>
+                      <h3 className="mb-2 text-sm font-semibold text-green-700 dark:text-green-400">
+                        {t("ambientes.scanned")}
+                      </h3>
+                      <ul className="space-y-3">
+                        {scannedSubscriptions.map(renderSubscription)}
+                      </ul>
+                    </div>
+                  )}
+                  {pendingSubscriptions.length > 0 && (
+                    <div>
+                      <h3 className="mb-2 text-sm font-semibold text-amber-700 dark:text-amber-400">
+                        {t("ambientes.pendingSection")}
+                      </h3>
+                      <ul className="space-y-3">
+                        {pendingSubscriptions.map(renderSubscription)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
           );
         })}
