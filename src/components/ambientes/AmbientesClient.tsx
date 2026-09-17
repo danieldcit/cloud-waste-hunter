@@ -250,7 +250,7 @@ export function AmbientesClient({
 
   function renderSubscription(s: AmbienteRow) {
     return (
-      <li key={s.id} className="border rounded p-4">
+      <li key={s.id} className="border rounded p-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="font-medium">{s.displayName}</p>
@@ -267,14 +267,14 @@ export function AmbientesClient({
               href={getAzureLoginUrl(s)}
               target="_blank"
               rel="noreferrer"
-              className="border rounded px-3 py-1"
+              className="border rounded px-2.5 py-1 text-sm"
             >
               {t("ambientes.openAzure")}
             </a>
             <button
               type="button"
               disabled={verifyingSubscriptionId === s.id}
-              className="bg-blue-600 text-white rounded px-3 py-1 hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+              className="bg-blue-600 text-white rounded px-2.5 py-1 text-sm hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
               onClick={() => handleVerify(s.id)}
             >
               {verifyingSubscriptionId === s.id
@@ -309,15 +309,15 @@ export function AmbientesClient({
         managedClients={managedClients}
       />
 
-      <main className="p-6">
+      <main className="p-4">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t("ambientes.title")}</h1>
+        <h1 className="text-xl font-bold">{t("ambientes.title")}</h1>
         {subscriptions.length > 0 && (
           <button
             type="button"
             onClick={handleVerifyAll}
             disabled={verifyingSubscriptionId !== null}
-            className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+            className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
           >
             {verifyingSubscriptionId !== null
               ? t("ambientes.verifyInProgress")
@@ -328,15 +328,15 @@ export function AmbientesClient({
 
       <form
         onSubmit={handleAddClientWithSubscription}
-        className="mb-8 flex flex-col items-start gap-3"
+        className="mb-6 flex flex-col items-start gap-2"
       >
         <div>
-          <label className="block text-sm mb-1" htmlFor="clientName">
+          <label className="mb-1 block text-xs" htmlFor="clientName">
             Cliente
           </label>
           <input
             id="clientName"
-            className="border rounded px-3 py-2"
+            className="border rounded px-2.5 py-1.5 text-sm"
             placeholder={t("ambientes.clientName")}
             value={newClientName}
             onChange={(e) => setNewClientName(e.target.value)}
@@ -344,12 +344,12 @@ export function AmbientesClient({
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-sm mb-1" htmlFor="azureSubscriptionId">
+            <label className="mb-1 block text-xs" htmlFor="azureSubscriptionId">
               {t("ambientes.subscriptionId")}
             </label>
             <input
               id="azureSubscriptionId"
-              className="border rounded px-3 py-2"
+              className="border rounded px-2.5 py-1.5 text-sm"
               value={subscriptionDrafts[0].azureSubscriptionId}
               onChange={(e) =>
                 setSubscriptionDrafts((current) =>
@@ -361,12 +361,12 @@ export function AmbientesClient({
             />
           </div>
           <div>
-            <label className="block text-sm mb-1" htmlFor="azureTenantId">
+            <label className="mb-1 block text-xs" htmlFor="azureTenantId">
               {t("ambientes.tenantId")}
             </label>
             <input
               id="azureTenantId"
-              className="border rounded px-3 py-2"
+              className="border rounded px-2.5 py-1.5 text-sm"
               value={subscriptionDrafts[0].azureTenantId}
               onChange={(e) =>
                 setSubscriptionDrafts((current) =>
@@ -378,12 +378,12 @@ export function AmbientesClient({
             />
           </div>
           <div>
-            <label className="block text-sm mb-1" htmlFor="displayName">
+            <label className="mb-1 block text-xs" htmlFor="displayName">
               {t("ambientes.displayName")}
             </label>
             <input
               id="displayName"
-              className="border rounded px-3 py-2"
+              className="border rounded px-2.5 py-1.5 text-sm"
               value={subscriptionDrafts[0].displayName}
               onChange={(e) =>
                 setSubscriptionDrafts((current) =>
@@ -400,7 +400,7 @@ export function AmbientesClient({
             {subscriptionDrafts.slice(1).map((draft, index) => (
               <div key={index + 1} className="flex flex-wrap items-end gap-3">
                 <input
-                  className="border rounded px-3 py-2"
+                  className="border rounded px-2.5 py-1.5 text-sm"
                   placeholder={t("ambientes.subscriptionId")}
                   value={draft.azureSubscriptionId}
                   onChange={(e) =>
@@ -414,7 +414,7 @@ export function AmbientesClient({
                   }
                 />
                 <input
-                  className="border rounded px-3 py-2"
+                  className="border rounded px-2.5 py-1.5 text-sm"
                   placeholder={t("ambientes.tenantId")}
                   value={draft.azureTenantId}
                   onChange={(e) =>
@@ -428,7 +428,7 @@ export function AmbientesClient({
                   }
                 />
                 <input
-                  className="border rounded px-3 py-2"
+                  className="border rounded px-2.5 py-1.5 text-sm"
                   placeholder={t("ambientes.displayName")}
                   value={draft.displayName}
                   onChange={(e) =>
@@ -447,7 +447,7 @@ export function AmbientesClient({
         )}
         <button
           type="button"
-          className="border rounded px-3 py-2"
+          className="border rounded px-2.5 py-1.5 text-sm"
           onClick={() =>
             setSubscriptionDrafts((current) => [
               ...current,
@@ -459,7 +459,7 @@ export function AmbientesClient({
         </button>
         <button
           type="submit"
-          className="bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700"
+          className="bg-blue-600 text-white rounded px-3 py-1.5 text-sm hover:bg-blue-700"
         >
           {t("ambientes.addClient")}
         </button>
@@ -482,11 +482,11 @@ export function AmbientesClient({
           );
           const expanded = expandedClients[client.id] ?? clientSubscriptions.length <= 1;
           return (
-            <section key={client.id} className="rounded border border-gray-300 p-4">
+            <section key={client.id} className="rounded border border-gray-300 p-3">
               <div className="flex items-center justify-between">
                 <button
                   type="button"
-                  className="flex items-center gap-2 text-left text-lg font-semibold"
+                  className="flex items-center gap-2 text-left text-base font-semibold"
                   onClick={() =>
                     setExpandedClients((current) => ({
                       ...current,
@@ -540,8 +540,8 @@ export function AmbientesClient({
       </div>
 
       {archivedClients.length > 0 && (
-        <section className="mt-8 rounded border border-gray-300 p-4">
-          <h2 className="mb-3 text-lg font-semibold">{t("ambientes.trash")}</h2>
+        <section className="mt-6 rounded border border-gray-300 p-3">
+          <h2 className="mb-2 text-base font-semibold">{t("ambientes.trash")}</h2>
           <ul className="space-y-2">
             {archivedClients.map((client) => (
               <li key={client.id} className="flex items-center justify-between rounded border p-3">
