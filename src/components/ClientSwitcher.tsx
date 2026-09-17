@@ -27,6 +27,7 @@ export function ClientSwitcher({
     const nextId = event.target.value;
     startTransition(async () => {
       await setActiveClient(nextId);
+      router.push("/dashboard");
       router.refresh();
     });
   }
