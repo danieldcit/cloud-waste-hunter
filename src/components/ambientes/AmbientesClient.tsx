@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { isValidSubscriptionId } from "@/lib/ambientes/validateSubscriptionId";
 import {
@@ -104,6 +104,19 @@ export function AmbientesClient({
     displayName: "",
   });
   const [editError, setEditError] = useState<string | null>(null);
+  const editPanelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!editingClientId) return;
+    function handleDocumentClick(event: MouseEvent) {
+      if (!editPanelRef.current?.contains(event.target as Node)) {
+        setEditingClientId(null);
+        setEditError(null);
+      }
+    }
+    document.addEventListener("mousedown", handleDocumentClick);
+    return () => document.removeEventListener("mousedown", handleDocumentClick);
+  }, [editingClientId]);
 
   function startEditingClient(client: ManagedClient) {
     setEditingClientId(client.id);
@@ -594,7 +607,7 @@ export function AmbientesClient({
                 </div>
               </div>
               {editingClientId === client.id && (
-                <div className="mt-3 rounded border border-blue-300 p-3 text-sm">
+                <div ref={editPanelRef} className="mt-3 rounded border border-blue-300 p-3 text-sm">
                   <div className="flex flex-wrap items-end gap-2">
                     <label className="flex flex-col gap-1">
                       {t("ambientes.clientName")}
