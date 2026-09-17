@@ -91,7 +91,7 @@ export function ReportsClient({
               onChange={(e) => setSelectedSubscriptionId(e.target.value)}
               className="rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
             >
-              <option value="all">Todas as subscriptions</option>
+              <option value="all">{t("subscriptions.all")}</option>
               {subscriptions.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.displayName}

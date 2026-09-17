@@ -74,7 +74,7 @@ export function RecommendationsClient({
             onChange={(e) => setSelectedSubscriptionId(e.target.value)}
             className="mb-4 rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
           >
-            <option value="all">Todas as subscriptions</option>
+            <option value="all">{t("subscriptions.all")}</option>
             {subscriptions.map((subscription) => (
               <option key={subscription.id} value={subscription.id}>
                 {subscription.displayName}

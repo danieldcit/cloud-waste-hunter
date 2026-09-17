@@ -33,11 +33,15 @@ interface ArchivedClient {
   archivedAt: string;
 }
 
-function formatLastScan(lastScanAt: string | null, neverScannedLabel: string): string {
+function formatLastScan(
+  lastScanAt: string | null,
+  neverScannedLabel: string,
+  locale: string,
+): string {
   if (!lastScanAt) {
     return neverScannedLabel;
   }
-  return new Intl.DateTimeFormat("pt-BR", {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "short",
     timeStyle: "medium",
   }).format(new Date(lastScanAt));
@@ -69,7 +73,7 @@ export function AmbientesClient({
   initialArchivedClients: ArchivedClient[];
   initialSubscriptions: AmbienteRow[];
 }) {
-  const { t } = useLocale();
+  const { locale, t } = useLocale();
   const [managedClients, setManagedClients] = useState(initialManagedClients);
   const [allClients] = useState(initialAllClients);
   const archivedClients = initialArchivedClients;
@@ -102,7 +106,7 @@ export function AmbientesClient({
     setScanProgressBySubscription((current) => ({ ...current, [subscriptionRowId]: 0 }));
     setVerifyMessageBySubscription((current) => ({
       ...current,
-      [subscriptionRowId]: "Verificando conexão...",
+      [subscriptionRowId]: t("ambientes.verifyInProgress"),
     }));
     const startedAt = Date.now();
     const poll = window.setInterval(async () => {
@@ -133,7 +137,7 @@ export function AmbientesClient({
         setVerifyMessageBySubscription((current) => ({
           ...current,
           [subscriptionRowId]:
-            "Delegação ainda não encontrada — tente novamente em alguns minutos.",
+            t("ambientes.delegationPending"),
         }));
         return;
       }
@@ -144,7 +148,7 @@ export function AmbientesClient({
         setVerifyMessageBySubscription((current) => ({
           ...current,
           [subscriptionRowId]:
-            errorData?.error ?? "Não foi possível verificar a conexão.",
+            errorData?.error ?? t("ambientes.verifyFailed"),
         }));
         return;
       }
@@ -166,14 +170,14 @@ export function AmbientesClient({
         ...current,
         [subscriptionRowId]:
           data.accessMode === "DIRECT_READ_ONLY"
-            ? "Scan concluído em modo direto somente leitura. Os desperdícios foram atualizados."
-            : "Scan concluído com sucesso. Os desperdícios foram atualizados.",
+            ? t("ambientes.scanDirectSuccess")
+            : t("ambientes.scanSuccess"),
       }));
     } catch {
       setVerifyMessageBySubscription((current) => ({
         ...current,
         [subscriptionRowId]:
-          "Não foi possível verificar a conexão. Verifique a configuração de acesso ao Azure.",
+          t("ambientes.connectionFailed"),
       }));
     } finally {
       window.clearInterval(poll);
@@ -205,11 +209,11 @@ export function AmbientesClient({
       ? [{ azureSubscriptionId, displayName }]
       : subscriptionDrafts;
     if (drafts.some((draft) => !isValidSubscriptionId(draft.azureSubscriptionId))) {
-      setClientFormError("ID de subscription inválido");
+      setClientFormError(t("ambientes.subscriptionIdInvalid"));
       return;
     }
     if (drafts.some((draft) => !draft.displayName.trim())) {
-      setClientFormError("Nome de exibição é obrigatório");
+      setClientFormError(t("ambientes.displayNameRequired"));
       return;
     }
     setClientFormError(null);
@@ -279,7 +283,8 @@ export function AmbientesClient({
               {s.azureSubscriptionId} ·{" "}
               {s.status === "CONNECTED" ? t("ambientes.connected") : t("ambientes.pending")}
               {" · "}
-              {t("ambientes.lastScan")}: {formatLastScan(s.lastScanAt, t("ambientes.neverScanned"))}
+              {t("ambientes.lastScan")}:{" "}
+              {formatLastScan(s.lastScanAt, t("ambientes.neverScanned"), locale)}
             </p>
           </div>
           <div className="flex gap-2">
@@ -289,7 +294,7 @@ export function AmbientesClient({
               rel="noreferrer"
               className="border rounded px-3 py-1"
             >
-              Abrir Azure
+              {t("ambientes.openAzure")}
             </a>
             <button
               type="button"
@@ -298,14 +303,15 @@ export function AmbientesClient({
               onClick={() => handleVerify(s.id)}
             >
               {verifyingSubscriptionId === s.id
-                ? `Verificando... ${scanProgressBySubscription[s.id] ?? 0}%`
+                ? `${t("ambientes.verifyInProgress")} ${scanProgressBySubscription[s.id] ?? 0}%`
                 : t("ambientes.verify")}
             </button>
           </div>
         </div>
         {verifyMessageBySubscription[s.id] && (
           <p className={`mt-2 text-sm ${
-            verifyMessageBySubscription[s.id].startsWith("Scan concluído")
+            verifyMessageBySubscription[s.id] === t("ambientes.scanDirectSuccess") ||
+            verifyMessageBySubscription[s.id] === t("ambientes.scanSuccess")
               ? "text-green-600"
               : verifyMessageBySubscription[s.id].startsWith("Verificando")
                 ? "text-amber-600"
@@ -338,7 +344,9 @@ export function AmbientesClient({
             disabled={verifyingSubscriptionId !== null}
             className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
           >
-            {verifyingSubscriptionId !== null ? "Verificando..." : "Atualizar todos"}
+            {verifyingSubscriptionId !== null
+              ? t("ambientes.verifyInProgress")
+              : t("ambientes.verifyAll")}
           </button>
         )}
       </div>
@@ -357,7 +365,7 @@ export function AmbientesClient({
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
           >
-            <option value="">Novo cliente</option>
+            <option value="">{t("ambientes.newClient")}</option>
             {managedClients.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name}
@@ -419,7 +427,7 @@ export function AmbientesClient({
               <div key={index + 1} className="flex flex-wrap items-end gap-3">
                 <input
                   className="border rounded px-3 py-2"
-                  placeholder="ID da subscription"
+                  placeholder={t("ambientes.subscriptionId")}
                   value={draft.azureSubscriptionId}
                   onChange={(e) =>
                     setSubscriptionDrafts((current) =>
@@ -433,7 +441,7 @@ export function AmbientesClient({
                 />
                 <input
                   className="border rounded px-3 py-2"
-                  placeholder="Nome de exibição"
+                  placeholder={t("ambientes.displayName")}
                   value={draft.displayName}
                   onChange={(e) =>
                     setSubscriptionDrafts((current) =>
@@ -460,7 +468,7 @@ export function AmbientesClient({
               ])
             }
           >
-            + Subscription
+            {t("ambientes.addSubscription")}
           </button>
         )}
         <button
@@ -506,7 +514,7 @@ export function AmbientesClient({
                       window.location.reload();
                     }}
                   >
-                    Excluir cliente
+                    {t("ambientes.deleteClient")}
                   </button>
                 )}
               </div>
@@ -518,7 +526,7 @@ export function AmbientesClient({
 
       {archivedClients.length > 0 && (
         <section className="mt-8 rounded border border-gray-300 p-4">
-          <h2 className="mb-3 text-lg font-semibold">Lixeira</h2>
+          <h2 className="mb-3 text-lg font-semibold">{t("ambientes.trash")}</h2>
           <ul className="space-y-2">
             {archivedClients.map((client) => (
               <li key={client.id} className="flex items-center justify-between rounded border p-3">
@@ -531,7 +539,7 @@ export function AmbientesClient({
                     window.location.reload();
                   }}
                 >
-                  Recuperar
+                  {t("ambientes.restore")}
                 </button>
               </li>
             ))}

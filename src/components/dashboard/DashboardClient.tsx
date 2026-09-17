@@ -74,7 +74,7 @@ export function DashboardClient({
       }
       return {
         id: "all",
-        displayName: "Todas as subscriptions",
+        displayName: t("subscriptions.all"),
         monthToDateSpend: subscriptions.reduce(
           (total, subscription) => total + (subscription.monthToDateSpend ?? 0),
           0,
@@ -87,7 +87,7 @@ export function DashboardClient({
       };
     }
     return subscriptions.find((s) => s.id === selectedSubscriptionId);
-  }, [subscriptions, selectedSubscriptionId]);
+  }, [subscriptions, selectedSubscriptionId, t]);
   const selectedFindings =
     selectedSubscriptionId === "all"
       ? visibleFindings
@@ -145,7 +145,7 @@ export function DashboardClient({
               onChange={(e) => setSelectedSubscriptionId(e.target.value)}
               className="rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800"
             >
-              <option value="all">Todas as subscriptions</option>
+              <option value="all">{t("subscriptions.all")}</option>
               {subscriptions.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.displayName}
