@@ -588,7 +588,14 @@ export function AmbientesClient({
                   <button
                     type="button"
                     className="rounded border px-2 py-1 text-sm"
-                    onClick={() => startEditingClient(client)}
+                    onClick={() => {
+                      if (editingClientId === client.id) {
+                        setEditingClientId(null);
+                        setEditError(null);
+                      } else {
+                        startEditingClient(client);
+                      }
+                    }}
                   >
                     {t("ambientes.editClient")}
                   </button>
