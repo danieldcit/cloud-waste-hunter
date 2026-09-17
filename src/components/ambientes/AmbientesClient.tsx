@@ -44,16 +44,12 @@ function formatLastScan(lastScanAt: string | null, neverScannedLabel: string): s
 }
 
 function getAzureLoginUrl(subscription: AmbienteRow): string {
-  const tenant = encodeURIComponent(subscription.tenantId ?? "common");
-  const params = new URLSearchParams({
-    client_id: "1950a258-227b-4e31-a9cf-717495945fc2",
-    response_type: "code",
-    redirect_uri: "https://portal.azure.com/signin/index/",
-    response_mode: "query",
-    scope: "openid profile",
-    prompt: "select_account",
-  });
-  return `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`;
+  const tenant = subscription.tenantId
+    ? `@${encodeURIComponent(subscription.tenantId)}`
+    : "";
+  return `https://portal.azure.com/#${tenant}/resource/subscriptions/${encodeURIComponent(
+    subscription.azureSubscriptionId,
+  )}/overview`;
 }
 
 export function AmbientesClient({
@@ -293,7 +289,7 @@ export function AmbientesClient({
               rel="noreferrer"
               className="border rounded px-3 py-1"
             >
-              AZ Login
+              Abrir Azure
             </a>
             <button
               type="button"
