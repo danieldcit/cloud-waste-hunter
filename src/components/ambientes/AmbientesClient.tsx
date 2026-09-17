@@ -339,11 +339,11 @@ export function AmbientesClient({
 
   function renderSubscription(s: AmbienteRow) {
     return (
-      <li key={s.id} className="border rounded p-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-medium">{s.displayName}</p>
-            <p className="text-sm text-gray-500">
+      <li key={s.id} className="rounded-md border border-slate-700 bg-slate-900/60 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{s.displayName}</p>
+            <p className="mt-1 text-xs text-slate-400">
               {s.azureSubscriptionId} ·{" "}
               {s.status === "CONNECTED" ? t("ambientes.connected") : t("ambientes.pending")}
               {" · "}
@@ -351,7 +351,7 @@ export function AmbientesClient({
               {formatLastScan(s.lastScanAt, t("ambientes.neverScanned"), locale)}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex shrink-0 gap-2">
             <a
               href={getAzureLoginUrl(s)}
               target="_blank"
@@ -571,11 +571,11 @@ export function AmbientesClient({
           );
           const expanded = expandedClients[client.id] ?? clientSubscriptions.length <= 1;
           return (
-            <section key={client.id} className="rounded border border-gray-300 p-3">
-              <div className="flex items-center justify-between">
+            <section key={client.id} className="overflow-hidden rounded-lg border border-slate-600 bg-slate-950/40 shadow-sm">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-700 bg-slate-900/70 px-4 py-3">
                 <button
                   type="button"
-                  className="flex items-center gap-2 text-left text-base font-semibold"
+                  className="flex min-w-0 items-center gap-2 text-left text-base font-semibold"
                   onClick={() =>
                     setExpandedClients((current) => ({
                       ...current,
@@ -584,9 +584,9 @@ export function AmbientesClient({
                   }
                 >
                   {clientSubscriptions.length > 1 && <span>{expanded ? "▾" : "▸"}</span>}
-                  {client.name}
+                  <span className="truncate">{client.name}</span>
                 </button>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <button
                     type="button"
                     data-client-edit-toggle
@@ -617,7 +617,7 @@ export function AmbientesClient({
                 </div>
               </div>
               {editingClientId === client.id && (
-                <div ref={editPanelRef} className="mt-3 rounded border border-blue-300 p-3 text-sm">
+                <div ref={editPanelRef} className="border-b border-blue-300 bg-blue-950/20 p-4 text-sm">
                   <div className="flex flex-wrap items-end gap-2">
                     <label className="flex flex-col gap-1">
                       {t("ambientes.clientName")}
@@ -706,23 +706,25 @@ export function AmbientesClient({
                 </div>
               )}
               {expanded && (
-                <div className="mt-3 space-y-5">
+                <div className="space-y-4 p-4">
                   {scannedSubscriptions.length > 0 && (
-                    <div>
-                      <h3 className="mb-2 text-sm font-semibold text-green-700 dark:text-green-400">
+                    <div className="rounded-md border border-emerald-900/70 bg-emerald-950/10 p-3">
+                      <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-green-400">
+                        <span className="h-2 w-2 rounded-full bg-green-400" />
                         {t("ambientes.scanned")}
                       </h3>
-                      <ul className="space-y-3">
+                      <ul className="space-y-2">
                         {scannedSubscriptions.map(renderSubscription)}
                       </ul>
                     </div>
                   )}
                   {pendingSubscriptions.length > 0 && (
-                    <div>
-                      <h3 className="mb-2 text-sm font-semibold text-amber-700 dark:text-amber-400">
+                    <div className="rounded-md border border-amber-900/70 bg-amber-950/10 p-3">
+                      <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-400">
+                        <span className="h-2 w-2 rounded-full bg-amber-400" />
                         {t("ambientes.pendingSection")}
                       </h3>
-                      <ul className="space-y-3">
+                      <ul className="space-y-2">
                         {pendingSubscriptions.map(renderSubscription)}
                       </ul>
                     </div>
