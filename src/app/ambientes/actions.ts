@@ -220,6 +220,7 @@ export async function permanentlyDeleteManagedClient(clientId: string): Promise<
   await prisma.$transaction(async (tx) => {
     const subscriptionIds = client.subscriptions.map((subscription) => subscription.id);
     if (subscriptionIds.length > 0) {
+      await tx.notification.deleteMany({ where: { finding: { subscriptionId: { in: subscriptionIds } } } });
       await tx.wasteFinding.deleteMany({ where: { subscriptionId: { in: subscriptionIds } } });
       await tx.costSnapshot.deleteMany({ where: { subscriptionId: { in: subscriptionIds } } });
       await tx.resource.deleteMany({ where: { subscriptionId: { in: subscriptionIds } } });

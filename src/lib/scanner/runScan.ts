@@ -275,6 +275,7 @@ function resolveCostResource(
 export async function runScan(subscriptionRecordId: string): Promise<void> {
   const subscription = await prisma.subscription.findUniqueOrThrow({
     where: { id: subscriptionRecordId },
+    include: { customer: { select: { operatorCustomerId: true } } },
   });
 
   const scanRun = await prisma.scanRun.create({
@@ -815,7 +816,17 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
         console.error(`Finding explanation failed for ${candidate.resourceId}`, error);
       }
 
-      await prisma.wasteFinding.upsert({
+      const existingFinding = await prisma.wasteFinding.findUnique({
+        where: {
+          subscriptionId_resourceId_ruleType: {
+            subscriptionId: subscription.id,
+            resourceId: candidate.resourceId,
+            ruleType: candidate.ruleType,
+          },
+        },
+        select: { id: true },
+      });
+      const finding = await prisma.wasteFinding.upsert({
         where: {
           subscriptionId_resourceId_ruleType: {
             subscriptionId: subscription.id,
@@ -847,6 +858,17 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           tooltipExplanation,
         },
       });
+      if (!existingFinding) {
+        const notificationCustomerId = subscription.customer.operatorCustomerId ?? subscription.customerId;
+        await prisma.notification.create({
+          data: {
+            customerId: notificationCustomerId,
+            findingId: finding.id,
+            title: "NEW_WASTE_FINDING",
+            message: `${subscription.displayName} · ${candidate.resourceId}`,
+          },
+        });
+      }
     }
 
     // Auto-resolve: an OPEN finding whose (resourceId, ruleType) no longer shows up in

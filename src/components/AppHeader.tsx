@@ -5,6 +5,7 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { signOutAction } from "@/app/dashboard/actions";
 import { ClientSwitcher } from "@/components/ClientSwitcher";
+import { NotificationBell } from "@/components/NotificationBell";
 import type { Locale } from "@/lib/i18n/dictionaries";
 
 export type ActiveNav = "dashboard" | "recommendations" | "reports" | "ambientes";
@@ -59,6 +60,7 @@ export function AppHeader({
         />
       )}
       <div className="flex items-center gap-3 text-sm">
+        <NotificationBell />
         <ClientSwitcher
           myAccountId={operatorCustomerId}
           myAccountLabel={userLabel}
