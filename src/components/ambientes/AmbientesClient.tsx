@@ -96,6 +96,7 @@ export function AmbientesClient({
     Record<string, number>
   >({});
   const [expandedClients, setExpandedClients] = useState<Record<string, boolean>>({});
+  const [expandedArchivedClients, setExpandedArchivedClients] = useState<Record<string, boolean>>({});
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [editingClientName, setEditingClientName] = useState("");
   const [editingSubscription, setEditingSubscription] = useState({
@@ -750,36 +751,52 @@ export function AmbientesClient({
             {archivedClients.map((client, clientIndex) => (
               <li
                 key={client.id}
-                className={`flex items-center justify-between rounded-md border px-4 py-3 ${
+                className={`rounded-md border ${
                   clientIndex % 2 === 0
                     ? "border-slate-500 bg-slate-900"
                     : "border-slate-700 bg-slate-950"
                 }`}
               >
-                <span className="font-medium">{client.name}</span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between gap-3 px-4 py-3">
                   <button
                     type="button"
-                    className="rounded bg-green-600 px-3 py-1 text-white"
-                    onClick={async () => {
-                      await restoreManagedClient(client.id);
-                      window.location.reload();
-                    }}
+                    className="flex min-w-0 items-center gap-2 text-left font-medium"
+                    onClick={() =>
+                      setExpandedArchivedClients((current) => ({
+                        ...current,
+                        [client.id]: !current[client.id],
+                      }))
+                    }
                   >
-                    {t("ambientes.restore")}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded bg-red-600 px-3 py-1 text-white"
-                    onClick={async () => {
-                      if (!window.confirm(t("ambientes.permanentDeleteConfirm"))) return;
-                      await permanentlyDeleteManagedClient(client.id);
-                      window.location.reload();
-                    }}
-                  >
-                    {t("ambientes.permanentDelete")}
+                    <span>{expandedArchivedClients[client.id] ? "▾" : "▸"}</span>
+                    <span className="truncate">{client.name}</span>
                   </button>
                 </div>
+                {expandedArchivedClients[client.id] && (
+                  <div className="flex justify-end gap-2 border-t border-slate-700 px-4 py-3">
+                    <button
+                      type="button"
+                      className="rounded bg-green-600 px-3 py-1 text-white"
+                      onClick={async () => {
+                        await restoreManagedClient(client.id);
+                        window.location.reload();
+                      }}
+                    >
+                      {t("ambientes.restore")}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded bg-red-600 px-3 py-1 text-white"
+                      onClick={async () => {
+                        if (!window.confirm(t("ambientes.permanentDeleteConfirm"))) return;
+                        await permanentlyDeleteManagedClient(client.id);
+                        window.location.reload();
+                      }}
+                    >
+                      {t("ambientes.permanentDelete")}
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
