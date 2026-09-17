@@ -5,9 +5,12 @@ import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { isValidSubscriptionId } from "@/lib/ambientes/validateSubscriptionId";
 import {
   addManagedClientWithSubscriptions,
+  addSubscriptionToManagedClient,
   archiveManagedClient,
   permanentlyDeleteManagedClient,
+  removeSubscriptionFromManagedClient,
   restoreManagedClient,
+  updateManagedClientName,
 } from "@/app/ambientes/actions";
 import { AppHeader } from "@/components/AppHeader";
 
@@ -93,6 +96,77 @@ export function AmbientesClient({
     Record<string, number>
   >({});
   const [expandedClients, setExpandedClients] = useState<Record<string, boolean>>({});
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [editingClientName, setEditingClientName] = useState("");
+  const [editingSubscription, setEditingSubscription] = useState({
+    azureSubscriptionId: "",
+    azureTenantId: "",
+    displayName: "",
+  });
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function startEditingClient(client: ManagedClient) {
+    setEditingClientId(client.id);
+    setEditingClientName(client.name);
+    setEditError(null);
+  }
+
+  async function saveClientName(clientId: string) {
+    try {
+      await updateManagedClientName(clientId, editingClientName);
+      setManagedClients((current) =>
+        current.map((client) =>
+          client.id === clientId ? { ...client, name: editingClientName.trim() } : client,
+        ),
+      );
+      setAllClients((current) =>
+        current.map((client) =>
+          client.id === clientId ? { ...client, name: editingClientName.trim() } : client,
+        ),
+      );
+      setEditingClientId(null);
+    } catch {
+      setEditError(t("ambientes.editFailed"));
+    }
+  }
+
+  async function addSubscriptionWhileEditing(clientId: string) {
+    const draft = editingSubscription;
+    if (
+      !isValidSubscriptionId(draft.azureSubscriptionId) ||
+      !isValidSubscriptionId(draft.azureTenantId) ||
+      !draft.displayName.trim()
+    ) {
+      setEditError(t("ambientes.subscriptionDataInvalid"));
+      return;
+    }
+    try {
+      const created = await addSubscriptionToManagedClient(
+        clientId,
+        draft.azureSubscriptionId,
+        draft.azureTenantId,
+        draft.displayName,
+      );
+      setSubscriptions((current) => [
+        {
+          id: created.id,
+          customerId: clientId,
+          azureSubscriptionId: draft.azureSubscriptionId.trim(),
+          azureTenantId: draft.azureTenantId.trim(),
+          displayName: created.displayName,
+          tenantId: draft.azureTenantId.trim(),
+          status: "PENDING",
+          lastScanAt: null,
+          needsPermissionUpgrade: false,
+        },
+        ...current,
+      ]);
+      setEditingSubscription({ azureSubscriptionId: "", azureTenantId: "", displayName: "" });
+      setEditError(null);
+    } catch {
+      setEditError(t("ambientes.editFailed"));
+    }
+  }
 
   async function handleVerify(subscriptionRowId: string) {
     setVerifyingSubscriptionId(subscriptionRowId);
@@ -497,19 +571,117 @@ export function AmbientesClient({
                   {clientSubscriptions.length > 1 && <span>{expanded ? "▾" : "▸"}</span>}
                   {client.name}
                 </button>
-                {client.id !== operatorCustomerId && (
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="rounded border border-red-500 px-3 py-1 text-red-500"
-                    onClick={async () => {
-                      await archiveManagedClient(client.id);
-                      window.location.reload();
-                    }}
+                    className="rounded border px-2 py-1 text-sm"
+                    onClick={() => startEditingClient(client)}
                   >
-                    {t("ambientes.deleteClient")}
+                    {t("ambientes.editClient")}
                   </button>
-                )}
+                  {client.id !== operatorCustomerId && (
+                    <button
+                      type="button"
+                      className="rounded border border-red-500 px-2 py-1 text-sm text-red-500"
+                      onClick={async () => {
+                        await archiveManagedClient(client.id);
+                        window.location.reload();
+                      }}
+                    >
+                      {t("ambientes.deleteClient")}
+                    </button>
+                  )}
+                </div>
               </div>
+              {editingClientId === client.id && (
+                <div className="mt-3 rounded border border-blue-300 p-3 text-sm">
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="flex flex-col gap-1">
+                      {t("ambientes.clientName")}
+                      <input
+                        className="rounded border px-2 py-1"
+                        value={editingClientName}
+                        onChange={(event) => setEditingClientName(event.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="rounded bg-blue-600 px-2 py-1 text-white"
+                      onClick={() => saveClientName(client.id)}
+                    >
+                      {t("ambientes.saveChanges")}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border px-2 py-1"
+                      onClick={() => setEditingClientId(null)}
+                    >
+                      {t("ambientes.cancel")}
+                    </button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <input
+                      className="rounded border px-2 py-1"
+                      placeholder={t("ambientes.subscriptionId")}
+                      value={editingSubscription.azureSubscriptionId}
+                      onChange={(event) =>
+                        setEditingSubscription((current) => ({
+                          ...current,
+                          azureSubscriptionId: event.target.value,
+                        }))
+                      }
+                    />
+                    <input
+                      className="rounded border px-2 py-1"
+                      placeholder={t("ambientes.tenantId")}
+                      value={editingSubscription.azureTenantId}
+                      onChange={(event) =>
+                        setEditingSubscription((current) => ({
+                          ...current,
+                          azureTenantId: event.target.value,
+                        }))
+                      }
+                    />
+                    <input
+                      className="rounded border px-2 py-1"
+                      placeholder={t("ambientes.displayName")}
+                      value={editingSubscription.displayName}
+                      onChange={(event) =>
+                        setEditingSubscription((current) => ({
+                          ...current,
+                          displayName: event.target.value,
+                        }))
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="rounded bg-blue-600 px-2 py-1 text-white"
+                      onClick={() => addSubscriptionWhileEditing(client.id)}
+                    >
+                      {t("ambientes.addSubscription")}
+                    </button>
+                  </div>
+                  {clientSubscriptions.map((subscription) => (
+                    <div key={subscription.id} className="mt-2 flex items-center justify-between">
+                      <span>{subscription.displayName}</span>
+                      <button
+                        type="button"
+                        className="text-red-600"
+                        onClick={async () => {
+                          if (!window.confirm(t("ambientes.removeSubscriptionConfirm"))) return;
+                          await removeSubscriptionFromManagedClient(subscription.id);
+                          setSubscriptions((current) =>
+                            current.filter((item) => item.id !== subscription.id),
+                          );
+                        }}
+                      >
+                        {t("ambientes.removeSubscription")}
+                      </button>
+                    </div>
+                  ))}
+                  {editError && <p className="mt-2 text-red-600">{editError}</p>}
+                </div>
+              )}
               {expanded && (
                 <div className="mt-3 space-y-5">
                   {scannedSubscriptions.length > 0 && (

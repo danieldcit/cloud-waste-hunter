@@ -164,6 +164,33 @@ export async function addSubscriptionToManagedClient(
   return { id: subscription.id, displayName: subscription.displayName };
 }
 
+export async function updateManagedClientName(clientId: string, name: string): Promise<void> {
+  const operatorCustomerId = await getOperatorCustomerId();
+  const trimmedName = name.trim();
+  if (!trimmedName) throw new Error("Client name is required");
+  const result = await prisma.customer.updateMany({
+    where: { id: clientId, operatorCustomerId, archivedAt: null },
+    data: { name: trimmedName },
+  });
+  if (result.count !== 1) throw new Error("Managed client not found");
+}
+
+export async function removeSubscriptionFromManagedClient(subscriptionId: string): Promise<void> {
+  const operatorCustomerId = await getOperatorCustomerId();
+  const subscription = await prisma.subscription.findFirst({
+    where: { id: subscriptionId, customer: { operatorCustomerId, archivedAt: null } },
+    select: { id: true },
+  });
+  if (!subscription) throw new Error("Subscription not found");
+  await prisma.$transaction(async (tx) => {
+    await tx.wasteFinding.deleteMany({ where: { subscriptionId } });
+    await tx.costSnapshot.deleteMany({ where: { subscriptionId } });
+    await tx.resource.deleteMany({ where: { subscriptionId } });
+    await tx.scanRun.deleteMany({ where: { subscriptionId } });
+    await tx.subscription.delete({ where: { id: subscriptionId } });
+  });
+}
+
 export async function archiveManagedClient(clientId: string): Promise<void> {
   const operatorCustomerId = await getOperatorCustomerId();
   const result = await prisma.customer.updateMany({
