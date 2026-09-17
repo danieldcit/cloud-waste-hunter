@@ -75,7 +75,7 @@ export function AmbientesClient({
 }) {
   const { locale, t } = useLocale();
   const [managedClients, setManagedClients] = useState(initialManagedClients);
-  const [allClients] = useState(initialAllClients);
+  const [allClients, setAllClients] = useState(initialAllClients);
   const archivedClients = initialArchivedClients;
   const [newClientName, setNewClientName] = useState("");
   const [selectedClientId, setSelectedClientId] = useState("");
@@ -253,6 +253,9 @@ export function AmbientesClient({
       } else {
         const created = await addManagedClientWithSubscriptions(trimmedName, drafts);
         setManagedClients((current) =>
+          [...current, created.client].sort((a, b) => a.name.localeCompare(b.name)),
+        );
+        setAllClients((current) =>
           [...current, created.client].sort((a, b) => a.name.localeCompare(b.name)),
         );
         setClientAddedMessage(created.client.name);
