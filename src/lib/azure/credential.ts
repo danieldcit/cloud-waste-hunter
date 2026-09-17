@@ -9,6 +9,16 @@ const azureCliExecutable =
   "C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd";
 
 async function runAzureCli(args: string[]) {
+  if (process.platform === "win32") {
+    return execFileAsync(process.env.ComSpec ?? "cmd.exe", [
+      "/d",
+      "/c",
+      "call",
+      azureCliExecutable,
+      ...args,
+    ]);
+  }
+
   try {
     return await execFileAsync(azureCliExecutable, args);
   } catch (error) {
