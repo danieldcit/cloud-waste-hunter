@@ -569,7 +569,7 @@ export function AmbientesClient({
           const pendingSubscriptions = clientSubscriptions.filter(
             (subscription) => subscription.lastScanAt === null,
           );
-          const expanded = expandedClients[client.id] ?? clientSubscriptions.length <= 1;
+          const expanded = expandedClients[client.id] ?? false;
           return (
             <section
               key={client.id}
@@ -590,7 +590,7 @@ export function AmbientesClient({
                     }))
                   }
                 >
-                  {clientSubscriptions.length > 1 && <span>{expanded ? "▾" : "▸"}</span>}
+                  <span>{expanded ? "▾" : "▸"}</span>
                   <span className="truncate">{client.name}</span>
                 </button>
                 <div className="flex shrink-0 items-center gap-2">
