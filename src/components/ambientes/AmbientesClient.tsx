@@ -561,7 +561,7 @@ export function AmbientesClient({
       </form>
 
       <div className="space-y-4">
-        {allClients.map((client) => {
+        {allClients.map((client, clientIndex) => {
           const clientSubscriptions = subscriptions.filter((s) => s.customerId === client.id);
           const scannedSubscriptions = clientSubscriptions.filter(
             (subscription) => subscription.lastScanAt !== null,
@@ -571,7 +571,14 @@ export function AmbientesClient({
           );
           const expanded = expandedClients[client.id] ?? clientSubscriptions.length <= 1;
           return (
-            <section key={client.id} className="overflow-hidden rounded-lg border border-slate-600 bg-slate-950/40 shadow-sm">
+            <section
+              key={client.id}
+              className={`overflow-hidden rounded-lg border shadow-sm ${
+                clientIndex % 2 === 0
+                  ? "border-slate-500 bg-slate-900"
+                  : "border-slate-700 bg-slate-950"
+              }`}
+            >
               <div className="flex items-center justify-between gap-3 border-b border-slate-700 bg-slate-900/70 px-4 py-3">
                 <button
                   type="button"
