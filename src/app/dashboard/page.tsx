@@ -14,7 +14,6 @@ export default async function DashboardPage() {
     where: {
       subscription: { customerId },
       status: "OPEN",
-      estimatedMonthlyCost: { gt: 0 },
     },
     orderBy: { detectedAt: "desc" },
     include: { subscription: true },

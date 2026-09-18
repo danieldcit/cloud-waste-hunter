@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { FindingStatus, WasteRuleType } from "@prisma/client";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import {
@@ -55,6 +56,8 @@ export function DashboardClient({
   subscriptions: SubscriptionOption[];
 }) {
   const { t } = useLocale();
+  const searchParams = useSearchParams();
+  const highlightedFindingId = searchParams.get("findingId");
   const [categoryFilter, setCategoryFilter] = useState<DashboardCategory | "all">("all");
   const [costSubcategoryFilter, setCostSubcategoryFilter] =
     useState<CostManagementSubcategory | "all">("all");
@@ -63,6 +66,15 @@ export function DashboardClient({
     "all",
   );
   const [visibleFindings, setVisibleFindings] = useState(findings);
+  const highlightedRowRef = useRef<HTMLTableRowElement>(null);
+
+  useEffect(() => {
+    if (!highlightedFindingId) return;
+    setCategoryFilter("all");
+    setCostSubcategoryFilter("all");
+    setSearch("");
+    setSelectedSubscriptionId("all");
+  }, [highlightedFindingId]);
 
   const selectedSubscription = useMemo(() => {
     if (selectedSubscriptionId === "all") {
@@ -118,6 +130,11 @@ export function DashboardClient({
       );
     });
   }, [selectedFindings, categoryFilter, costSubcategoryFilter, search, t]);
+
+  useEffect(() => {
+    if (!highlightedFindingId) return;
+    highlightedRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightedFindingId, rows]);
 
   async function handleTakeAction(findingId: string) {
     const response = await fetch(`/api/findings/${findingId}/dismiss`, { method: "POST" });
@@ -247,8 +264,16 @@ export function DashboardClient({
           <tbody>
             {rows.map((finding) => {
               const impact = impactForCost(finding.estimatedMonthlyCost);
+              const isHighlighted = finding.id === highlightedFindingId;
               return (
-                <tr key={finding.id} className="border-b border-gray-100 dark:border-gray-800">
+                <tr
+                  key={finding.id}
+                  id={`finding-${finding.id}`}
+                  ref={isHighlighted ? highlightedRowRef : undefined}
+                  className={`border-b border-gray-100 dark:border-gray-800 ${
+                    isHighlighted ? "bg-blue-50 ring-2 ring-inset ring-blue-500 dark:bg-blue-950/40" : ""
+                  }`}
+                >
                   <td className="p-2">{t(`filters.${categoryForRule(finding.ruleType)}`)}</td>
                   <td className="p-2">{t(`rule.${finding.ruleType}`)}</td>
                   <td className="p-2">

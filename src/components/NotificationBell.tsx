@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { setActiveClient } from "@/app/ambientes/actions";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
@@ -20,6 +20,18 @@ export function NotificationBell() {
   const { locale, t } = useLocale();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
 
   async function loadNotifications() {
     const response = await fetch("/api/notifications");
@@ -47,12 +59,12 @@ export function NotificationBell() {
     }
     setOpen(false);
     await setActiveClient(notification.customerId);
-    router.push("/dashboard");
+    router.push(`/dashboard?findingId=${notification.findingId}`);
   }
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length;
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         type="button"
         aria-label={t("notifications.title")}
