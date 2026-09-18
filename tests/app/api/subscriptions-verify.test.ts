@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "../../helpers/resetDb";
 
-vi.mock("@/lib/tenant", () => ({ requireCustomerId: vi.fn() }));
+vi.mock("@/lib/tenant", () => ({ getOperatorCustomerId: vi.fn() }));
 vi.mock("@/lib/azure/armFetch", () => ({ armFetch: vi.fn() }));
 vi.mock("@/lib/scanner/runScan", () => ({ runScan: vi.fn().mockResolvedValue(undefined) }));
 
-import { requireCustomerId } from "@/lib/tenant";
+import { getOperatorCustomerId } from "@/lib/tenant";
 import { armFetch } from "@/lib/azure/armFetch";
 import { runScan } from "@/lib/scanner/runScan";
 import { POST } from "@/app/api/subscriptions/[id]/verify/route";
@@ -17,21 +17,21 @@ describe("POST /api/subscriptions/:id/verify", () => {
   });
   beforeEach(resetDb);
 
-  it("marks the subscription CONNECTED and triggers a scan when a delegation exists", async () => {
+  it("marks the subscription CONNECTED and triggers a scan when the Azure tenant matches", async () => {
     const customer = await prisma.customer.create({
       data: { entraTenantId: "tenant-1", name: "Acme" },
     });
     const subscription = await prisma.subscription.create({
-      data: { customerId: customer.id, azureSubscriptionId: "sub-1", displayName: "Prod" },
+      data: {
+        customerId: customer.id,
+        azureSubscriptionId: "sub-1",
+        azureTenantId: "tenant-1",
+        displayName: "Prod",
+      },
     });
 
-    vi.mocked(requireCustomerId).mockResolvedValue(customer.id);
-    vi.mocked(armFetch).mockImplementation(async (url: string) => {
-      if (url.includes("registrationAssignments")) {
-        return { value: [{ id: "assignment-1" }] };
-      }
-      return { tenantId: "tenant-1" };
-    });
+    vi.mocked(getOperatorCustomerId).mockResolvedValue(customer.id);
+    vi.mocked(armFetch).mockResolvedValue({ tenantId: "tenant-1" });
 
     const response = await POST(new Request("http://localhost"), {
       params: Promise.resolve({ id: subscription.id }),
@@ -43,39 +43,21 @@ describe("POST /api/subscriptions/:id/verify", () => {
     expect(runScan).toHaveBeenCalledWith(subscription.id);
   });
 
-  it("returns 409 when no delegation exists yet", async () => {
-    const customer = await prisma.customer.create({
-      data: { entraTenantId: "tenant-2", name: "Other" },
-    });
-    const subscription = await prisma.subscription.create({
-      data: { customerId: customer.id, azureSubscriptionId: "sub-2", displayName: "Other" },
-    });
-
-    vi.mocked(requireCustomerId).mockResolvedValue(customer.id);
-    vi.mocked(armFetch).mockResolvedValue({ value: [] });
-
-    const response = await POST(new Request("http://localhost"), {
-      params: Promise.resolve({ id: subscription.id }),
-    });
-
-    expect(response.status).toBe(409);
-  });
-
   it("returns 403 and does not connect when the subscription's tenant does not match the customer's tenant", async () => {
     const customer = await prisma.customer.create({
       data: { entraTenantId: "tenant-3", name: "Mismatch" },
     });
     const subscription = await prisma.subscription.create({
-      data: { customerId: customer.id, azureSubscriptionId: "sub-3", displayName: "Mismatch" },
+      data: {
+        customerId: customer.id,
+        azureSubscriptionId: "sub-3",
+        azureTenantId: "tenant-3",
+        displayName: "Mismatch",
+      },
     });
 
-    vi.mocked(requireCustomerId).mockResolvedValue(customer.id);
-    vi.mocked(armFetch).mockImplementation(async (url: string) => {
-      if (url.includes("registrationAssignments")) {
-        return { value: [{ id: "assignment-1" }] };
-      }
-      return { tenantId: "attacker-tenant" };
-    });
+    vi.mocked(getOperatorCustomerId).mockResolvedValue(customer.id);
+    vi.mocked(armFetch).mockResolvedValue({ tenantId: "attacker-tenant" });
 
     const response = await POST(new Request("http://localhost"), {
       params: Promise.resolve({ id: subscription.id }),
@@ -102,17 +84,13 @@ describe("POST /api/subscriptions/:id/verify", () => {
       data: {
         customerId: managedClient.id,
         azureSubscriptionId: "sub-managed",
+        azureTenantId: "real-azure-tenant-guid",
         displayName: "Managed Sub",
       },
     });
 
-    vi.mocked(requireCustomerId).mockResolvedValue(managedClient.id);
-    vi.mocked(armFetch).mockImplementation(async (url: string) => {
-      if (url.includes("registrationAssignments")) {
-        return { value: [{ id: "assignment-1" }] };
-      }
-      return { tenantId: "real-azure-tenant-guid" };
-    });
+    vi.mocked(getOperatorCustomerId).mockResolvedValue(operator.id);
+    vi.mocked(armFetch).mockResolvedValue({ tenantId: "real-azure-tenant-guid" });
 
     const response = await POST(new Request("http://localhost"), {
       params: Promise.resolve({ id: subscription.id }),
@@ -135,7 +113,7 @@ describe("POST /api/subscriptions/:id/verify", () => {
       data: { customerId: customerB.id, azureSubscriptionId: "sub-b", displayName: "B" },
     });
 
-    vi.mocked(requireCustomerId).mockResolvedValue(customerA.id);
+    vi.mocked(getOperatorCustomerId).mockResolvedValue(customerA.id);
 
     const response = await POST(new Request("http://localhost"), {
       params: Promise.resolve({ id: subscriptionB.id }),

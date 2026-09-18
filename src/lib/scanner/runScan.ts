@@ -601,12 +601,6 @@ export async function runScan(subscriptionRecordId: string): Promise<void> {
           );
         }
       }
-      if (estimatedMonthlyCost <= 0) {
-        console.warn(
-          `Skipping finding ${candidate.resourceId} (${candidate.ruleType}): no positive monthly cost was confirmed`,
-        );
-        continue;
-      }
       let estimatedMonthlySavings: number | null = null;
       try {
         estimatedMonthlySavings = await estimateMonthlySavings(

@@ -925,6 +925,7 @@ describe("runScan", () => {
       },
     ]);
     vi.mocked(estimateMonthlyCost).mockResolvedValue(100);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(2);
     vi.mocked(suggestVmSku).mockResolvedValue({ skuName: "Standard_B2ms", monthlySavings: 42 });
     vi.mocked(explainFinding).mockResolvedValue(null);
 
@@ -934,7 +935,7 @@ describe("runScan", () => {
       where: { subscriptionId: subscription.id, resourceId: "vm-tt-1", ruleType: "IDLE_VM" },
     });
     expect(finding.suggestedActionSummary).toContain(
-      "reduza o consumo para Standard_B2ms (economia estimada de $42.00/mês) e desligue a VM/VMSS quando não houver carga.",
+      "Alternativa Azure: Standard_B2ms; economia estimada $100.00/mês (100.0%), com preço da alternativa não disponível.",
     );
   });
 
@@ -953,6 +954,7 @@ describe("runScan", () => {
       },
     ]);
     vi.mocked(estimateMonthlyCost).mockResolvedValue(100);
+    vi.mocked(getAverageCpuPercent).mockResolvedValue(2);
     vi.mocked(suggestVmSku).mockResolvedValue(null);
     vi.mocked(explainFinding).mockResolvedValue(null);
 
@@ -962,7 +964,7 @@ describe("runScan", () => {
       where: { subscriptionId: subscription.id, resourceId: "vm-tt-2", ruleType: "IDLE_VM" },
     });
     expect(finding.suggestedActionSummary).toContain(
-      "reduza o consumo do recurso quando a carga permitir e desligue a VM/VMSS quando não houver carga.",
+      "Alternativa: desligamento, limpeza ou remoção após validação; o custo evitável corresponde ao custo atual.",
     );
   });
 
@@ -1017,7 +1019,7 @@ describe("runScan", () => {
       where: { subscriptionId: subscription.id, resourceId: "vmss-tt-4", ruleType: "VMSS_IDLE_LOW_UTILIZATION" },
     });
     expect(finding.suggestedActionSummary).toContain(
-      "reduza o consumo para Standard_B2ms (economia estimada de $42.00/mês) e desligue a VM/VMSS quando não houver carga.",
+      "Alternativa Azure: Standard_B2ms; economia estimada $100.00/mês (100.0%), com preço da alternativa não disponível.",
     );
   });
 
